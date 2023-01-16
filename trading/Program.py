@@ -192,6 +192,12 @@ class TradeApp(TestWrapper, TestClient):
         self.dry_run = False
         self.request_events = dict()
         self.contract = None #target contract to trade
+        self.options_trading_mode = 1
+        self.option_chain = {} #the current option chain
+        self.short_leg_delta = 0.0
+        self.long_leg_delta = 0.0
+        self.stop_loss_percentage = 0.0
+        self.dte = 0
 
         self.tickers = []
         self.futures = []
@@ -306,6 +312,32 @@ class TradeApp(TestWrapper, TestClient):
             self.placeOrder(order_id, contract,
                 OrderSamples.MarketOrder(operation, trade_qty))
             new_order_event.wait()
+
+    def execute_limit_order(self, contract: Contract, order: Order, attached_order: Order = None):
+        """
+        Execute a limit order.
+
+        Args:
+            contract (Contract): the target contract to buy or sell
+            order (Order): the target order
+            attached_order (Order, optional): any attached order (e.g. STP) related to original order, will not wait for it to fill
+        """
+        logging.info("Submitting new limit order...")
+        event = IBKREvent(self.nextOrderId())
+        if order.totalQuantity == 0:
+            logging.warning("0 Contracts to trade, no order will be submitted to IBKR!")
+        elif self.dry_run:
+            logging.warning("Dry run. No orders will be submitted to IBKR!")
+
+        if not self.dry_run and order.totalQuantity != 0:
+            order.orderId = event.order_id
+            self.placeOrder(event.order_id, contract, order)
+            if not attached_order == None:
+                attached_order_id = self.nextOrderId() #needed for IB but not tracked
+                attached_order.orderId = attached_order_id
+                attached_order.parentId = order.orderId
+                self.placeOrder(attached_order_id, contract, attached_order)
+            event.wait()
 
     def make_daily_trade(self):
         """
@@ -484,6 +516,12 @@ class TradeApp(TestWrapper, TestClient):
         for e in opts:
             if e.option_delta != None:
                 logging.info(f"Strike {e.contract.strike}{e.contract.right} done! {e.option_bid} {e.option_ask} {e.option_delta}")
+                self.option_chain[str(e.contract.strike) + e.contract.right] = {
+                    "bid": e.option_bid,
+                    "ask": e.option_ask,
+                    "delta": e.option_delta,
+                    "contract": e.contract
+                }
 
     def get_target_option_chain(self, dte: int = 0):
         """
@@ -510,6 +548,34 @@ class TradeApp(TestWrapper, TestClient):
         self.get_option_data(target_exp_str, event.option_strikes, "C", event.option_trading_class) #may not be needed for 0dte put spread?
 
         return True
+
+    def find_option_by_delta(self, delta: float, side: str):
+        """
+        Find the option contract with the closest delta as specified.
+
+        Args:
+            delta (float): the delta of the contract
+            side (str): "P" for put, "C" for call
+        
+        Returns:
+            The dict containing the target option contract in the "contract" key.
+        """
+        assert(side in ["C", "P"])
+
+        diff = 9999999.99
+        target = None
+        for s in self.option_chain.keys():
+            if str(s).find(side) == -1:
+                #wrong side
+                continue
+
+            option = self.option_chain[s]
+            delta_diff = abs(option.delta - delta)
+            if delta_diff < diff:
+                diff = delta_diff
+                target = option
+
+        return target
 
     def check_market_open(self):
         """
@@ -550,6 +616,72 @@ class TradeApp(TestWrapper, TestClient):
 
         return not hours_today == 'CLOSED'
 
+    def create_bull_put_order(self, short_leg: dict, long_leg: dict, stop_loss_percentage: float):
+        """
+        Create a IBKR Bull Put order with stop loss as attached order.
+
+        Args:
+            short_leg (dict): the dict with the short leg option contract in the "contract" key.
+            long_leg (dict): the dict with the long leg option contract in the "contract" key.
+            stop_loss_percentage (float): percentage of stop loss as premium received e.g. 3.0 for 300% stop loss as premium received.
+
+        Returns:
+            A tuple containing:
+                1. The Bull Put option combo contract
+                2. IBKR order object for the Bull Put order
+                3. IBKR order object for the attached stop loss order
+        """
+        assert(short_leg != None)
+        assert(long_leg != None)
+        assert(short_leg['contract'] != None and long_leg['contract'] != None)
+        assert(short_leg['contract'].strike != long_leg['contract'].strike)
+
+        short_leg_contract = self.search_contracts(short_leg['contract'])[0]
+        long_leg_contract = self.search_contracts(long_leg['contract'])[0]
+
+        contract = Contract()
+        contract.symbol = short_leg_contract.symbol
+        contract.secType = "BAG"
+        contract.currency = short_leg_contract.currency
+        contract.exchange = "SMART"
+
+        leg1 = ComboLeg()
+        leg1.conId = short_leg_contract.conId
+        leg1.ratio = 1
+        leg1.action = "SELL"
+        leg1.exchange = "SMART"
+
+        leg2 = ComboLeg()
+        leg2.conId = long_leg_contract.conId
+        leg2.ratio = 1
+        leg2.action = "BUY"
+        leg2.exchange = "SMART"
+
+        contract.comboLegs = []
+        contract.comboLegs.append(leg1)
+        contract.comboLegs.append(leg2)
+
+        price = -(short_leg['ask'] + short_leg['bid']) / 2.0 + (long_leg['ask'] + long_leg['bid']) / 2.0
+        assert(price < 0.0) # credit 
+        stop_loss_price = price * stop_loss_percentage
+
+        order = Order()
+        #order.orderId = self.nextOrderId()
+        order.action = "BUY"
+        order.orderType = "LMT"
+        order.totalQuantity = self.quantity
+        order.lmtPrice = price
+        
+        stop_order = Order()
+        #stop_order.orderId = self.nextOrderId()
+        #stop_order.parentId = order.orderId
+        stop_order.action = "SELL"
+        stop_order.orderType = "STP"
+        stop_order.totalQuantity = self.quantity
+        stop_order.auxPrice = stop_loss_price
+
+        return (contract, order, stop_order)
+
     def trading_thread(self):
         """
         The thread to run trading logic, so as to not block the IBKR threads.
@@ -561,13 +693,31 @@ class TradeApp(TestWrapper, TestClient):
             return
 
         for item in self.tickers:
+            self.option_chain = {}
             self.ticker = item[0]
             self.future = ""
             self.quantity = item[1]
             self.get_target_contract()
-            self.get_target_option_chain(0) #0 for 0dte
-            #self.make_daily_trade(0.10, 0.05, 3.0)
+            option_chain_found = self.get_target_option_chain(self.dte) #0 for 0dte
 
+            if not option_chain_found:
+                continue
+
+            #now we have option chain, build option combo and then order by mode
+            order = None
+            match self.options_trading_mode:
+                case 1:
+                    #bull put
+                    #1x short put + 1x long put 
+                    short_leg = self.find_option_by_delta(self.short_leg_delta, "P")
+                    long_leg = self.find_option_by_delta(self.long_leg_delta, "P")
+                    assert(short_leg != None and long_leg != None)
+                    logging.info(f"Bull put order: {short_leg.contract.strike}P/{long_leg.contract.strike}P")
+                    combo_contract, order, stop_loss_order = self.create_bull_put_order(short_leg, long_leg, self.stop_loss_percentage)
+            assert(order != None and stop_loss_order != None)
+            self.execute_limit_order(combo_contract, order, stop_loss_order)
+
+        time.sleep(5) #for IBKR to clear pending messages
         logging.info("All trades complete! Disconnecting now...")
         self.disconnect()
 
@@ -2258,7 +2408,7 @@ def get_wsl_host_ip():
                 return ip
     return ""
 
-def run(quantity: int, check_positions_only: bool, port: int, dry_run: bool, ticker: str = "", future: str = ""):
+def run(quantity: int, check_positions_only: bool, port: int, dry_run: bool, ticker: str = "", future: str = "", mode: int = 1, short_leg_delta: float = 0, long_leg_delta: float = 0, stop_loss_percentage: float = 0, dte: int = 0):
     stocks = []
     futures = []
 
@@ -2271,9 +2421,9 @@ def run(quantity: int, check_positions_only: bool, port: int, dry_run: bool, tic
     elif not future == "":
         futures.append((future, quantity))
 
-    return run_trading_program(check_positions_only, port, dry_run, stocks, futures)
+    return run_trading_program(check_positions_only, port, dry_run, stocks, futures, mode, short_leg_delta, long_leg_delta, stop_loss_percentage, dte)
 
-def run_trading_program(check_positions_only: bool, port: int, dry_run: bool, tickers: list[tuple[str,int]] = None, futures: list[tuple[str,int]] = None):
+def run_trading_program(check_positions_only: bool, port: int, dry_run: bool, tickers: list[tuple[str,int]] = None, futures: list[tuple[str,int]] = None, mode: int = 1, short_leg_delta: float = 0, long_leg_delta: float = 0, stop_loss_percentage: float = 0, dte: int = 0):
     logging.debug("now is %s", datetime.datetime.now())
 
     # enable logging when member vars are assigned
@@ -2299,6 +2449,11 @@ def run_trading_program(check_positions_only: bool, port: int, dry_run: bool, ti
 
         app.check_positions_only = check_positions_only
         app.dry_run = dry_run
+        app.options_trading_mode = mode
+        app.short_leg_delta = short_leg_delta
+        app.long_leg_delta = long_leg_delta
+        app.stop_loss_percentage = stop_loss_percentage
+        app.dte = dte
 
         #ip = get_wsl_host_ip()
         ip = "localhost"
@@ -2321,20 +2476,26 @@ def run_trading_program(check_positions_only: bool, port: int, dry_run: bool, ti
         app.dumpReqAnsErrSituation()
 
 def main():
-    cmdLineParser = argparse.ArgumentParser("Make daily trade, will close existing positions before placing new trade.")
+    cmdLineParser = argparse.ArgumentParser("Trade 0DTE (or longer duration) options.")
     cmdLineParser.add_argument("-p", "--port", action="store", type=int,
                                dest="port", default=7496, help="The TCP port to use")
-    cmdLineParser.add_argument("-q", "--quantity", type=int, dest="quantity", default=1, help="The amount of stock or futures to trade. >1 means buy and <1 means sell.")
+    cmdLineParser.add_argument("-q", "--quantity", type=int, dest="quantity", default=1, help="The amount of stock or futures option combos to trade.")
     cmdLineParser.add_argument("-c", "--check_only", type=bool, dest="check_only", default=False, help="Check account position only.")
     cmdLineParser.add_argument("-d", "--dry_run", type=bool, dest="dry_run", default=False, help="Dry run.")
+    cmdLineParser.add_argument("-m", "--mode", type=int, dest="mode", choices=[1,2], default=1, help="Mode: 1 for Bull Put, 2 for Iron Condor")
+    cmdLineParser.add_argument("-s", "--short_leg_delta", type=float, dest="short_leg_delta", default=0.16, help="Delta of the short leg. Should be a float in range of [0,1].")
+    cmdLineParser.add_argument("-l", "--long_leg_delta", type=float, dest="long_leg_delta", default=0.1, help="Delta of the long leg. Should be a float in range of [0,1].")
+    cmdLineParser.add_argument("-x", "--stop_loss_percentage", type=float, dest="stop_loss_percentage", default=3.0, help="Percentage of stop loss as the premium received. e.g. 3.0 for setting stop loss at 300 percent of premium received.")
+    cmdLineParser.add_argument("-e", "--day_to_expiry", type=int, default=0, dest="dte", help="Day to expiry for the target option contract(s).")
     group = cmdLineParser.add_mutually_exclusive_group()
-    group.add_argument("-t", "--ticker", type=str, dest="ticker", required=False, default="", help="Ticker to trade. Can be US stocks only. Cannot be used with -f flag at the same time. If no ticker is specified, ES futures will be traded.")
-    group.add_argument("-f", "--future", type=str, dest="future", required=False, default="", help="Futures contract to trade. Cannot be used with -t flag at the same time. If none is specified, ES futures will be traded.")
+    group.add_argument("-t", "--ticker", type=str, dest="ticker", required=False, default="", help="Ticker to trade. Can be US stocks or indexes with options only. Cannot be used with -f flag at the same time.")
+    group.add_argument("-f", "--future", type=str, dest="future", required=False, default="", help="[NOT IMPLEMENTED YET] Futures contract to trade. Cannot be used with -t flag at the same time.")
     args = cmdLineParser.parse_args()
     print("Using args", args)
     logging.debug("Using args %s", args)
     # print(args)
-    run(args.quantity, args.check_only, args.port, args.dry_run, args.ticker, args.future)
+
+    run(args.quantity, args.check_only, args.port, args.dry_run, args.ticker, args.future, args.mode, args.short_leg_delta, args.long_leg_delta, args.stop_loss_percentage, args.dte)
 
 def setup_logging():
     import os
