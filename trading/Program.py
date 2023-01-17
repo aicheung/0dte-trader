@@ -198,6 +198,8 @@ class TradeApp(TestWrapper, TestClient):
         self.long_leg_delta = 0.0
         self.stop_loss_percentage = 0.0
         self.dte = 0
+        self.auto_retry_fill_interval = 0
+        self.auto_retry_price_decrement = 0.05
 
         self.tickers = []
         self.futures = []
@@ -331,13 +333,30 @@ class TradeApp(TestWrapper, TestClient):
 
         if not self.dry_run and order.totalQuantity != 0:
             order.orderId = event.order_id
+            self.request_events[order.orderId] = event
             self.placeOrder(event.order_id, contract, order)
             if not attached_order == None:
                 attached_order_id = self.nextOrderId() #needed for IB but not tracked
                 attached_order.orderId = attached_order_id
                 attached_order.parentId = order.orderId
                 self.placeOrder(attached_order_id, contract, attached_order)
-            event.wait()
+
+            done = False
+            while not done:
+                done = event.wait(self.auto_retry_fill_interval if self.auto_retry_fill_interval > 0 else None)
+                if done:
+                    break
+
+                #retry
+                order.lmtPrice = order.lmtPrice + (self.auto_retry_price_decrement * (1 if order.lmtPrice < 0 else -1))
+                if not attached_order == None:
+                    attached_order.auxPrice = order.lmtPrice * self.stop_loss_percentage
+                logging.warning(f"Order did not fill after specified interval. Retrying with price {order.lmtPrice}")
+                event.clear()
+                self.placeOrder(order.orderId, contract, order)
+                if not attached_order == None:
+                    self.placeOrder(attached_order.orderId, contract, attached_order)
+
 
     def make_daily_trade(self):
         """
@@ -2417,7 +2436,20 @@ def get_wsl_host_ip():
                 return ip
     return ""
 
-def run(quantity: int, check_positions_only: bool, port: int, dry_run: bool, ticker: str = "", future: str = "", mode: int = 1, short_leg_delta: float = 0, long_leg_delta: float = 0, stop_loss_percentage: float = 0, dte: int = 0):
+def run(
+    quantity: int, 
+    check_positions_only: bool, 
+    port: int, dry_run: bool, 
+    ticker: str = "", 
+    future: str = "", 
+    mode: int = 1, 
+    short_leg_delta: float = 0, 
+    long_leg_delta: float = 0, 
+    stop_loss_percentage: float = 0, 
+    dte: int = 0,
+    auto_retry_fill_interval: int = 0,
+    auto_retry_price_decrement: float = 0.05
+    ):
     stocks = []
     futures = []
 
@@ -2430,9 +2462,35 @@ def run(quantity: int, check_positions_only: bool, port: int, dry_run: bool, tic
     elif not future == "":
         futures.append((future, quantity))
 
-    return run_trading_program(check_positions_only, port, dry_run, stocks, futures, mode, short_leg_delta, long_leg_delta, stop_loss_percentage, dte)
+    return run_trading_program(
+        check_positions_only, 
+        port, 
+        dry_run, 
+        stocks, 
+        futures, 
+        mode, 
+        short_leg_delta, 
+        long_leg_delta, 
+        stop_loss_percentage, 
+        dte,
+        auto_retry_fill_interval,
+        auto_retry_price_decrement
+        )
 
-def run_trading_program(check_positions_only: bool, port: int, dry_run: bool, tickers: list[tuple[str,int]] = None, futures: list[tuple[str,int]] = None, mode: int = 1, short_leg_delta: float = 0, long_leg_delta: float = 0, stop_loss_percentage: float = 0, dte: int = 0):
+def run_trading_program(
+    check_positions_only: bool, 
+    port: int, 
+    dry_run: bool, 
+    tickers: list[tuple[str,int]] = None, 
+    futures: list[tuple[str,int]] = None, 
+    mode: int = 1, 
+    short_leg_delta: float = 0, 
+    long_leg_delta: float = 0, 
+    stop_loss_percentage: float = 0, 
+    dte: int = 0,
+    auto_retry_fill_interval: int = 0,
+    auto_retry_price_decrement: float = 0.05
+    ):
     logging.debug("now is %s", datetime.datetime.now())
 
     # enable logging when member vars are assigned
@@ -2463,6 +2521,8 @@ def run_trading_program(check_positions_only: bool, port: int, dry_run: bool, ti
         app.long_leg_delta = long_leg_delta
         app.stop_loss_percentage = stop_loss_percentage
         app.dte = dte
+        app.auto_retry_fill_interval = auto_retry_fill_interval
+        app.auto_retry_price_decrement = auto_retry_price_decrement
 
         #ip = get_wsl_host_ip()
         ip = "localhost"
@@ -2496,6 +2556,8 @@ def main():
     cmdLineParser.add_argument("-l", "--long_leg_delta", type=float, dest="long_leg_delta", default=0.1, help="Delta of the long leg. Should be a float in range of [0,1].")
     cmdLineParser.add_argument("-x", "--stop_loss_percentage", type=float, dest="stop_loss_percentage", default=3.0, help="Percentage of stop loss as the premium received. e.g. 3.0 for setting stop loss at 300 percent of premium received.")
     cmdLineParser.add_argument("-e", "--day_to_expiry", type=int, default=0, dest="dte", help="Day to expiry for the target option contract(s).")
+    cmdLineParser.add_argument("-ai", "--auto_retry_fill_interval", type=int, default=0, dest="auto_retry_fill_interval", help="If set and is larger than zero, order will be resubmitted by the interval specified. In each interal, order price will be decremented by the amount specified by param -ap.")
+    cmdLineParser.add_argument("-ap", "--auto_retry_price_decrement", type=float, default=0.05, dest="auto_retry_price_decrement", help="Decrements price towards 0 by the value specified each time the order is resubmitted.")
     group = cmdLineParser.add_mutually_exclusive_group()
     group.add_argument("-t", "--ticker", type=str, dest="ticker", required=False, default="", help="Ticker to trade. Can be US stocks or indexes with options only. Cannot be used with -f flag at the same time.")
     group.add_argument("-f", "--future", type=str, dest="future", required=False, default="", help="[NOT IMPLEMENTED YET] Futures contract to trade. Cannot be used with -t flag at the same time.")
@@ -2504,7 +2566,19 @@ def main():
     logging.debug("Using args %s", args)
     # print(args)
 
-    run(args.quantity, args.check_only, args.port, args.dry_run, args.ticker, args.future, args.mode, args.short_leg_delta, args.long_leg_delta, args.stop_loss_percentage, args.dte)
+    run(args.quantity, 
+    args.check_only, 
+    args.port, 
+    args.dry_run, 
+    args.ticker, 
+    args.future, 
+    args.mode, 
+    args.short_leg_delta, 
+    args.long_leg_delta, 
+    args.stop_loss_percentage, 
+    args.dte,
+    args.auto_retry_fill_interval,
+    args.auto_retry_price_decrement)
 
 def setup_logging():
     import os

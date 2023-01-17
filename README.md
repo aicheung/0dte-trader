@@ -21,4 +21,7 @@ IBKR Gateway or TWS is assumed to be running in local machine or the same Kubern
 - `-x` (`STOP_LOSS_PERCENTAGE`): Percentage of stop loss as the premium received. e.g. 3.0 for setting stop loss at 300 percent of premium received.
 - `-e` (`DAY_TO_EXPIRY`): Day to expiry for the target option contract(s).
 - `-t` (`TICKER`): Ticker to trade. Can be US stocks or indexes with options only.
+- `-ai` (`AUTO_RETRY_INTERVAL`): Due to the large bid-ask spread, option spread orders may have difficulty filling at mid prices. If set and is larger than zero, order will be resubmitted by the interval specified. In each interal, order price will be decremented by the amount specified by param `-ap`. If not set or set at 0, orders will wait indefinitely until completely filled.
+- `-ap` (`AUTO_RETRY_PRICE_DECREMENT`): Decrements price towards 0 by the value specified each time the order is resubmitted.
+    
 
