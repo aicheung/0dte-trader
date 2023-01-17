@@ -520,14 +520,15 @@ class TradeApp(TestWrapper, TestClient):
 
         opts = []
         submitted = 0
+        skip_itm = self.short_leg_delta < 0.51 and self.long_leg_delta < 0.51
         for s in strikes:
             if s > target_max or s < target_min:
                 continue
 
-            if not itm_options and side == "P" and s > cur_price:
+            if not itm_options and side == "P" and skip_itm and s > cur_price:
                 continue #no itm put
 
-            if not itm_options and side == "C" and s < cur_price:
+            if not itm_options and side == "C" and skip_itm and s < cur_price:
                 continue #no itm call
 
             contract = Contract()
