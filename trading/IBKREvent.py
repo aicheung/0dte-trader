@@ -11,17 +11,20 @@ class IBKREvent(Event):
         self.option_ask = None
         self.option_delta = None
         self.option_req_cancelled = False
+        
+        self.get_prices = True
 
         self.last = None #for underlying
         super().__init__()
 
     def has_complete_data(self):
+        price_done = (not self.get_prices) or (self.option_bid != None and self.option_ask != None)
         if self.contract != None:
             match self.contract.secType:
                 case 'OPT':
-                    return self.option_bid != None and self.option_ask != None and self.option_delta != None
+                    return price_done and self.option_delta != None
                 case 'BAG':
-                    return self.option_bid != None and self.option_ask != None #no need delta for combo
+                    return price_done #no need delta for combo
                 case 'IND':
                     return self.last != None
         

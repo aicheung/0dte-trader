@@ -201,6 +201,8 @@ class TradeApp(TestWrapper, TestClient):
         self.auto_retry_fill_interval = 0
         self.auto_retry_price_decrement = 0.05
 
+        self.round_interval = 0.05
+
         self.tickers = []
         self.futures = []
 
@@ -287,6 +289,16 @@ class TradeApp(TestWrapper, TestClient):
         """
         return target - original
 
+    def round_price(self, price:float):
+        """
+        If price is not in round_interval , round price to nearest 1 decimal price.
+        e.g. -0.775 -> -0.8
+        """
+        if price % self.round_interval > 0.01: #float precision problem
+            return round(price, 1)
+        else:
+            return price
+
     def execute_market_order(self, contract: Contract, quantity:int):
         """
         Execute a market order.
@@ -333,7 +345,7 @@ class TradeApp(TestWrapper, TestClient):
 
         if not self.dry_run and order.totalQuantity != 0:
             order.orderId = event.order_id
-            self.request_events[order.orderId] = event
+            self.register_event(event)
             self.placeOrder(event.order_id, contract, order)
             if not attached_order == None:
                 attached_order_id = self.nextOrderId() #needed for IB but not tracked
@@ -349,14 +361,15 @@ class TradeApp(TestWrapper, TestClient):
 
                 #retry
                 order.lmtPrice = order.lmtPrice + (self.auto_retry_price_decrement * (1 if order.lmtPrice < 0 else -1))
+                order.lmtPrice = self.round_price(order.lmtPrice)
                 if not attached_order == None:
-                    attached_order.auxPrice = order.lmtPrice * self.stop_loss_percentage
+                    attached_order.auxPrice = self.round_price(order.lmtPrice * self.stop_loss_percentage)
+                    
                 logging.warning(f"Order did not fill after specified interval. Retrying with price {order.lmtPrice}")
                 event.clear()
                 self.placeOrder(order.orderId, contract, order)
                 if not attached_order == None:
                     self.placeOrder(attached_order.orderId, contract, attached_order)
-
 
     def make_daily_trade(self):
         """
@@ -496,10 +509,11 @@ class TradeApp(TestWrapper, TestClient):
         e.wait()
         return e.last, e.option_bid, e.option_ask
 
-    def get_option_data(self, exp, strikes, side, trading_class, itm_options: bool = False):
+    def get_option_data(self, exp, strikes, side, trading_class, itm_options: bool = False, get_prices: bool = False):
         #for optimization, no need to get far strike options? (e.g. 7% range for SPX)
         target_range_percentage = 0.07
 
+        #get the underlying prices and get only relavent options
         cur_price, bid, ask = self.get_price(self.contract)
         target_max = cur_price * (1 + target_range_percentage)
         target_min = cur_price * (1 - target_range_percentage)
@@ -528,6 +542,7 @@ class TradeApp(TestWrapper, TestClient):
 
             e = IBKREvent(self.nextOrderId())
             e.contract = contract
+            e.get_prices = get_prices
             self.register_event(e)
             self.reqMktData(e.order_id, contract, "225", False, False, None)
             opts.append(e)
@@ -548,7 +563,7 @@ class TradeApp(TestWrapper, TestClient):
                     "contract": e.contract
                 }
 
-    def get_target_option_chain(self, dte: int = 0):
+    def get_target_option_chain(self, dte: int = 0, get_prices: bool = False):
         """
         Get the option chain for the specified DTE for the target contract.
         """
@@ -570,9 +585,9 @@ class TradeApp(TestWrapper, TestClient):
         logging.info(f"Loading Greeks for {self.contract.symbol} options with expiry {target_exp_str}:")
 
         if self.options_trading_mode in [1,3]:
-            self.get_option_data(target_exp_str, event.option_strikes, "P", event.option_trading_class)
+            self.get_option_data(target_exp_str, event.option_strikes, "P", event.option_trading_class, get_prices)
         if self.options_trading_mode in [2,3]:
-            self.get_option_data(target_exp_str, event.option_strikes, "C", event.option_trading_class) #may not be needed for 0dte put spread?
+            self.get_option_data(target_exp_str, event.option_strikes, "C", event.option_trading_class, get_prices) #may not be needed for 0dte put spread?
 
         return True
 
@@ -662,9 +677,10 @@ class TradeApp(TestWrapper, TestClient):
         assert(long_leg != None)
         assert(short_leg['contract'] != None and long_leg['contract'] != None)
         assert(short_leg['contract'].strike != long_leg['contract'].strike)
+        assert(short_leg['contract'].strike > long_leg['contract'].strike)
 
-        short_leg_contract = self.search_contracts(short_leg['contract'])[0]
-        long_leg_contract = self.search_contracts(long_leg['contract'])[0]
+        short_leg_contract: ContractDetails = self.search_contracts(short_leg['contract'])[0]
+        long_leg_contract: ContractDetails = self.search_contracts(long_leg['contract'])[0]
 
         contract = Contract()
         contract.symbol = short_leg_contract.contract.symbol
@@ -688,10 +704,13 @@ class TradeApp(TestWrapper, TestClient):
         contract.comboLegs.append(leg1)
         contract.comboLegs.append(leg2)
 
+        #for rounding
+        self.round_interval = short_leg_contract.minTick
+
         last, bid, ask = self.get_price(contract)
-        price = (bid + ask) / 2.0
+        price = self.round_price((bid + ask) / 2.0)
         assert(price < 0.0) # credit 
-        stop_loss_price = price * stop_loss_percentage
+        stop_loss_price = self.round_price(price * stop_loss_percentage)
 
         order = Order()
         #order.orderId = self.nextOrderId()
@@ -1277,9 +1296,6 @@ class TradeApp(TestWrapper, TestClient):
     def tickPrice(self, reqId: TickerId, tickType: TickType, price: float,
                   attrib: TickAttrib):
         super().tickPrice(reqId, tickType, price, attrib)
-        print("TickPrice. TickerId:", reqId, "tickType:", tickType,
-              "Price:", floatMaxString(price), "CanAutoExecute:", attrib.canAutoExecute,
-              "PastLimit:", attrib.pastLimit, end=' ')
         if tickType == TickTypeEnum.BID or tickType == TickTypeEnum.ASK:
             print("PreOpen:", attrib.preOpen)
         else:
@@ -1305,7 +1321,6 @@ class TradeApp(TestWrapper, TestClient):
     # ! [ticksize]
     def tickSize(self, reqId: TickerId, tickType: TickType, size: Decimal):
         super().tickSize(reqId, tickType, size)
-        print("TickSize. TickerId:", reqId, "TickType:", tickType, "Size: ", decimalMaxString(size))
     # ! [ticksize]
 
     @iswrapper
@@ -1319,7 +1334,6 @@ class TradeApp(TestWrapper, TestClient):
     # ! [tickstring]
     def tickString(self, reqId: TickerId, tickType: TickType, value: str):
         super().tickString(reqId, tickType, value)
-        print("TickString. TickerId:", reqId, "Type:", tickType, "Value:", value)
     # ! [tickstring]
 
     @iswrapper
@@ -1660,11 +1674,11 @@ class TradeApp(TestWrapper, TestClient):
                               gamma: float, vega: float, theta: float, undPrice: float):
         super().tickOptionComputation(reqId, tickType, tickAttrib, impliedVol, delta,
                                       optPrice, pvDividend, gamma, vega, theta, undPrice)
-        print("TickOptionComputation. TickerId:", reqId, "TickType:", tickType,
-              "TickAttrib:",tickAttrib,
-              "ImpliedVolatility:", impliedVol, "Delta:", delta, "OptionPrice:",
-              optPrice, "pvDividend:", pvDividend, "Gamma: ", gamma, "Vega:", vega,
-              "Theta:", theta, "UnderlyingPrice:", undPrice)
+        # print("TickOptionComputation. TickerId:", reqId, "TickType:", tickType,
+        #       "TickAttrib:",tickAttrib,
+        #       "ImpliedVolatility:", impliedVol, "Delta:", delta, "OptionPrice:",
+        #       optPrice, "pvDividend:", pvDividend, "Gamma: ", gamma, "Vega:", vega,
+        #       "Theta:", theta, "UnderlyingPrice:", undPrice)
 
         e = self.find_event_by_id(reqId)
         if not e == None:
