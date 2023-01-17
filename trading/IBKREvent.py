@@ -16,7 +16,13 @@ class IBKREvent(Event):
         super().__init__()
 
     def has_complete_data(self):
-        if self.contract != None and self.contract.secType != 'OPT':
-            return self.last != None
+        if self.contract != None:
+            match self.contract.secType:
+                case 'OPT':
+                    return self.option_bid != None and self.option_ask != None and self.option_delta != None
+                case 'BAG':
+                    return self.option_bid != None and self.option_ask != None #no need delta for combo
+                case 'IND':
+                    return self.last != None
         
-        return self.option_bid != None and self.option_ask != None and self.option_delta != None
+        return True #non data request?

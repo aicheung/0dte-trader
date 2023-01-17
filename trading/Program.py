@@ -475,13 +475,13 @@ class TradeApp(TestWrapper, TestClient):
         self.register_event(e)
         self.reqMktData(e.order_id, contract, "", False, False, None)
         e.wait()
-        return e.last
+        return e.last, e.option_bid, e.option_ask
 
-    def get_option_data(self, exp, strikes, side, trading_class):
+    def get_option_data(self, exp, strikes, side, trading_class, itm_options: bool = False):
         #for optimization, no need to get far strike options? (e.g. 7% range for SPX)
         target_range_percentage = 0.07
 
-        cur_price = self.get_price(self.contract)
+        cur_price, bid, ask = self.get_price(self.contract)
         target_max = cur_price * (1 + target_range_percentage)
         target_min = cur_price * (1 - target_range_percentage)
 
@@ -490,6 +490,12 @@ class TradeApp(TestWrapper, TestClient):
         for s in strikes:
             if s > target_max or s < target_min:
                 continue
+
+            if not itm_options and side == "P" and s > cur_price:
+                continue #no itm put
+
+            if not itm_options and side == "C" and s < cur_price:
+                continue #no itm call
 
             contract = Contract()
             contract.symbol = self.contract.symbol
@@ -544,8 +550,10 @@ class TradeApp(TestWrapper, TestClient):
         #load greeks for all calls and puts?
         logging.info(f"Loading Greeks for {self.contract.symbol} options with expiry {target_exp_str}:")
 
-        self.get_option_data(target_exp_str, event.option_strikes, "P", event.option_trading_class)
-        self.get_option_data(target_exp_str, event.option_strikes, "C", event.option_trading_class) #may not be needed for 0dte put spread?
+        if self.options_trading_mode in [1,3]:
+            self.get_option_data(target_exp_str, event.option_strikes, "P", event.option_trading_class)
+        if self.options_trading_mode in [2,3]:
+            self.get_option_data(target_exp_str, event.option_strikes, "C", event.option_trading_class) #may not be needed for 0dte put spread?
 
         return True
 
@@ -570,7 +578,7 @@ class TradeApp(TestWrapper, TestClient):
                 continue
 
             option = self.option_chain[s]
-            delta_diff = abs(option.delta - delta)
+            delta_diff = abs(abs(option['delta']) - abs(delta))
             if delta_diff < diff:
                 diff = delta_diff
                 target = option
@@ -640,19 +648,19 @@ class TradeApp(TestWrapper, TestClient):
         long_leg_contract = self.search_contracts(long_leg['contract'])[0]
 
         contract = Contract()
-        contract.symbol = short_leg_contract.symbol
+        contract.symbol = short_leg_contract.contract.symbol
         contract.secType = "BAG"
-        contract.currency = short_leg_contract.currency
+        contract.currency = short_leg_contract.contract.currency
         contract.exchange = "SMART"
 
         leg1 = ComboLeg()
-        leg1.conId = short_leg_contract.conId
+        leg1.conId = short_leg_contract.contract.conId
         leg1.ratio = 1
         leg1.action = "SELL"
         leg1.exchange = "SMART"
 
         leg2 = ComboLeg()
-        leg2.conId = long_leg_contract.conId
+        leg2.conId = long_leg_contract.contract.conId
         leg2.ratio = 1
         leg2.action = "BUY"
         leg2.exchange = "SMART"
@@ -661,7 +669,8 @@ class TradeApp(TestWrapper, TestClient):
         contract.comboLegs.append(leg1)
         contract.comboLegs.append(leg2)
 
-        price = -(short_leg['ask'] + short_leg['bid']) / 2.0 + (long_leg['ask'] + long_leg['bid']) / 2.0
+        last, bid, ask = self.get_price(contract)
+        price = (bid + ask) / 2.0
         assert(price < 0.0) # credit 
         stop_loss_price = price * stop_loss_percentage
 
@@ -712,7 +721,7 @@ class TradeApp(TestWrapper, TestClient):
                     short_leg = self.find_option_by_delta(self.short_leg_delta, "P")
                     long_leg = self.find_option_by_delta(self.long_leg_delta, "P")
                     assert(short_leg != None and long_leg != None)
-                    logging.info(f"Bull put order: {short_leg.contract.strike}P/{long_leg.contract.strike}P")
+                    logging.info(f"Bull put order: {short_leg['contract'].strike}P/{long_leg['contract'].strike}P")
                     combo_contract, order, stop_loss_order = self.create_bull_put_order(short_leg, long_leg, self.stop_loss_percentage)
             assert(order != None and stop_loss_order != None)
             self.execute_limit_order(combo_contract, order, stop_loss_order)
