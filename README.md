@@ -1,7 +1,12 @@
 # 0dte-trader
 Trade 0DTE options algorithmically using Interactive Brokers (IBKR) API.
 
-WIP, initial target is Bull Put/Bear Call and Iron Condor. Iron Butterfly may be supported if I have time.
+Supports the follwing option spreads:
+
+- Bull Put
+- Bear Call
+- Iron Condor
+- Iron Butterfly (WIP)
 
 ## Installation
 Python 3.10 is assumed. 
@@ -15,7 +20,7 @@ IBKR Gateway or TWS is assumed to be running in local machine or the same Kubern
 - `-p` (`PORT`): The TCP port to the IBKR Gateway or TWS.
 - `-q` (`QUANTITY`): The amount of stock or futures option combos to trade
 - `-d` (`DRY_RUN`): Dry run. If set (by passing "True"), all logic will execute as normal but will not send any orders to IBKR.
-- `-m` (`MODE`): Mode: 1 for Bull Put, 2 for Iron Condor(WIP)
+- `-m` (`MODE`): Mode: 1 for Bull Put, 2 for Bear Call, 3 for Iron Condor
 - `-s` (`SHORT_LEG_DELTA`): Delta of the short leg. Should be a float in range of [0,1].
 - `-l` (`LONG_LEG_DELTA`): Delta of the long leg. Should be a float in range of [0,1].
 - `-x` (`STOP_LOSS_PERCENTAGE`): Percentage of stop loss as the premium received. e.g. 3.0 for setting stop loss at 300 percent of premium received.
