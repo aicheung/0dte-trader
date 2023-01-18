@@ -12,6 +12,7 @@ import threading
 from platform import uname
 import copy
 from operator import attrgetter
+from decimal import Decimal
 
 import logging
 import time
@@ -291,11 +292,16 @@ class TradeApp(TestWrapper, TestClient):
 
     def round_price(self, price:float):
         """
-        If price is not in round_interval , round price to nearest 1 decimal price.
+        If price is not in round_interval , round price to nearest interval.
         e.g. -0.775 -> -0.8
         """
-        if price % self.round_interval > 0.01: #float precision problem
-            return round(price, 1)
+        pd = Decimal(str(round(price, 2)))
+        ri = Decimal(str(self.round_interval))
+
+        if pd % ri != Decimal('0'): 
+            n_interval = round(abs(pd) / ri)
+            result = float(n_interval * ri)
+            return result * (-1 if price < 0 else 1)
         else:
             return price
 
@@ -568,18 +574,19 @@ class TradeApp(TestWrapper, TestClient):
         """
         Get the option chain for the specified DTE for the target contract.
         """
+        target_exp = datetime.date.today() + datetime.timedelta(days = dte)
+        target_exp_str = target_exp.strftime("%Y%m%d")
         event = IBKREvent(self.nextOrderId())
+        event.target_expiration = target_exp_str
         self.register_event(event)
         self.reqSecDefOptParams(event.order_id, self.contract.symbol, "", self.contract.secType, self.contract.conId)
         event.wait()
         logging.info(f"Option chain: {event.option_strikes}")
         logging.info(f"Option expirations: {event.option_expirations}")
 
-        target_exp = datetime.date.today() + datetime.timedelta(days = dte)
-        target_exp_str = target_exp.strftime("%Y%m%d")
         has_exp = target_exp_str in event.option_expirations
         if not has_exp:
-            logging.warning(f"Expiration date not found: {target_exp_str}. Will not trade!")
+            logging.warning(f"Expiration date {target_exp_str} not found for ticker: {self.contract.symbol}. Will not trade!")
             return False
 
         #load greeks for all calls and puts?
@@ -592,20 +599,23 @@ class TradeApp(TestWrapper, TestClient):
 
         return True
 
-    def find_option_by_delta(self, delta: float, side: str):
+    def find_option_by_delta(self, delta: Decimal | float, side: str, delta_upper_bound: Decimal = None, delta_lower_bound: Decimal = None):
         """
         Find the option contract with the closest delta as specified.
 
         Args:
-            delta (float): the delta of the contract
+            delta (Decimal or float): the delta of the contract
             side (str): "P" for put, "C" for call
+            delta_upper_bound (Decimal, optional): the upper bound for delta. Can be used to limit a particular leg so as not to get the same contract as other legs.
+            delta_lower_bound (Decimal, optional): the lower bound for delta. Can be used to limit a particular leg so as not to get the same contract as other legs.
         
         Returns:
             The dict containing the target option contract in the "contract" key.
         """
         assert(side in ["C", "P"])
 
-        diff = 9999999.99
+        delta = round(Decimal(delta),2) if type(delta) == float else delta
+        diff = Decimal(9999999.99)
         target = None
         for s in self.option_chain.keys():
             if str(s).find(side) == -1:
@@ -613,7 +623,12 @@ class TradeApp(TestWrapper, TestClient):
                 continue
 
             option = self.option_chain[s]
-            delta_diff = abs(abs(option['delta']) - abs(delta))
+            delta_val = abs(option['delta'])
+            if delta_upper_bound != None and delta_val >= abs(delta_upper_bound):
+                continue
+            elif delta_lower_bound != None and delta_val <= abs(delta_lower_bound):
+                continue
+            delta_diff = abs(abs(delta_val) - abs(delta))
             if delta_diff < diff:
                 diff = delta_diff
                 target = option
@@ -659,54 +674,35 @@ class TradeApp(TestWrapper, TestClient):
 
         return not hours_today == 'CLOSED'
 
-    def create_bull_put_order(self, short_leg: dict, long_leg: dict, stop_loss_percentage: float):
+    def create_option_spread_order(self, underlying_symbol: str, currency: str, spread: list[ComboLeg], stop_loss_percentage: float, min_tick: float):
         """
-        Create a IBKR Bull Put order with stop loss as attached order.
+        Create a IBKR order with stop loss as attched order from the spread legs.
 
         Args:
-            short_leg (dict): the dict with the short leg option contract in the "contract" key.
-            long_leg (dict): the dict with the long leg option contract in the "contract" key.
+            underlying_symbol (str): the ticker for the underlying
+            currency (str): currency of the option contract(s)
+            spread (list[ComboLeg]): the list of option legs in the spread.
             stop_loss_percentage (float): percentage of stop loss as premium received e.g. 3.0 for 300% stop loss as premium received.
+            min_tick (float): the minimum increment of price of the spread.
 
         Returns:
             A tuple containing:
-                1. The Bull Put option combo contract
-                2. IBKR order object for the Bull Put order
+                1. The option combo contract
+                2. IBKR order object for the order
                 3. IBKR order object for the attached stop loss order
+
         """
-        assert(short_leg != None)
-        assert(long_leg != None)
-        assert(short_leg['contract'] != None and long_leg['contract'] != None)
-        assert(short_leg['contract'].strike != long_leg['contract'].strike)
-        assert(short_leg['contract'].strike > long_leg['contract'].strike)
-
-        short_leg_contract: ContractDetails = self.search_contracts(short_leg['contract'])[0]
-        long_leg_contract: ContractDetails = self.search_contracts(long_leg['contract'])[0]
-
+        assert(spread != None and len(spread) > 1)
         contract = Contract()
-        contract.symbol = short_leg_contract.contract.symbol
+        contract.symbol = underlying_symbol
         contract.secType = "BAG"
-        contract.currency = short_leg_contract.contract.currency
+        contract.currency = currency
         contract.exchange = "SMART"
 
-        leg1 = ComboLeg()
-        leg1.conId = short_leg_contract.contract.conId
-        leg1.ratio = 1
-        leg1.action = "SELL"
-        leg1.exchange = "SMART"
-
-        leg2 = ComboLeg()
-        leg2.conId = long_leg_contract.contract.conId
-        leg2.ratio = 1
-        leg2.action = "BUY"
-        leg2.exchange = "SMART"
-
-        contract.comboLegs = []
-        contract.comboLegs.append(leg1)
-        contract.comboLegs.append(leg2)
+        contract.comboLegs = spread
 
         #for rounding
-        self.round_interval = short_leg_contract.minTick
+        self.round_interval = min_tick
 
         last, bid, ask = self.get_price(contract)
         price = self.round_price((bid + ask) / 2.0)
@@ -719,6 +715,7 @@ class TradeApp(TestWrapper, TestClient):
         order.orderType = "LMT"
         order.totalQuantity = self.quantity
         order.lmtPrice = price
+        order.transmit = False #prevent race condition according to IBKR doc
         
         stop_order = Order()
         #stop_order.orderId = self.nextOrderId()
@@ -727,8 +724,55 @@ class TradeApp(TestWrapper, TestClient):
         stop_order.orderType = "STP"
         stop_order.totalQuantity = self.quantity
         stop_order.auxPrice = stop_loss_price
+        stop_order.transmit = True
 
         return (contract, order, stop_order)
+
+    def create_credit_spread_order(self, short_leg: dict | list[dict], long_leg: dict | list[dict], stop_loss_percentage: float):
+        """
+        Create a IBKR Bull Put, Bear Call or Iron Condor order with stop loss as attached order.
+
+        Args:
+            short_leg (dict | list[dict]): the dict or list of it with the short leg option contract(s) in the "contract" key.
+            long_leg (dict | list[dict]): the dict or the list of it with the long leg option contract(s) in the "contract" key.
+            stop_loss_percentage (float): percentage of stop loss as premium received e.g. 3.0 for 300% stop loss as premium received.
+
+        Returns:
+            A tuple containing:
+                1. The Bull Put option combo contract
+                2. IBKR order object for the Bull Put/Bear Call order
+                3. IBKR order object for the attached stop loss order
+        """
+        assert(short_leg != None)
+        assert(long_leg != None)
+
+        spread = []
+        shorts: list = short_leg if type(short_leg) == list else [short_leg]
+        longs: list = long_leg if type(long_leg) == list else [long_leg]
+        
+        #to be passed to order
+        min_tick = None
+
+        for s in shorts + longs:
+            contract_details: ContractDetails = self.search_contracts(s['contract'])[0]
+
+            if min_tick == None:
+                min_tick = contract_details.minTick
+
+            leg = ComboLeg()
+            leg.conId = contract_details.contract.conId
+            leg.ratio = 1
+            leg.action = "SELL" if s in shorts else "BUY"
+            leg.exchange = "SMART"
+            spread.append(leg)
+
+        return self.create_option_spread_order(
+            self.contract.symbol, 
+            self.contract.currency, 
+            spread, 
+            stop_loss_percentage, 
+            min_tick
+            )
 
     def trading_thread(self):
         """
@@ -758,12 +802,39 @@ class TradeApp(TestWrapper, TestClient):
                     #bull put
                     #1x short put + 1x long put 
                     short_leg = self.find_option_by_delta(self.short_leg_delta, "P")
-                    long_leg = self.find_option_by_delta(self.long_leg_delta, "P")
+                    long_leg = self.find_option_by_delta(self.long_leg_delta, "P", delta_upper_bound=short_leg['delta'])
                     assert(short_leg != None and long_leg != None)
                     logging.info(f"Bull put order: {short_leg['contract'].strike}P/{long_leg['contract'].strike}P")
-                    combo_contract, order, stop_loss_order = self.create_bull_put_order(short_leg, long_leg, self.stop_loss_percentage)
-            assert(order != None and stop_loss_order != None)
-            self.execute_limit_order(combo_contract, order, stop_loss_order)
+                    combo_contract, order, stop_loss_order = self.create_credit_spread_order(short_leg, long_leg, self.stop_loss_percentage)
+                    assert(order != None and stop_loss_order != None)
+                    self.execute_limit_order(combo_contract, order, stop_loss_order)
+                case 2:
+                    #bear call
+                    #1x short call + 1x long call 
+                    short_leg = self.find_option_by_delta(self.short_leg_delta, "C")
+                    long_leg = self.find_option_by_delta(self.long_leg_delta, "C", delta_upper_bound=short_leg['delta'])
+                    assert(short_leg != None and long_leg != None)
+                    logging.info(f"Bear call order: {short_leg['contract'].strike}C/{long_leg['contract'].strike}C")
+                    combo_contract, order, stop_loss_order = self.create_credit_spread_order(short_leg, long_leg, self.stop_loss_percentage)
+                    assert(order != None and stop_loss_order != None)
+                    self.execute_limit_order(combo_contract, order, stop_loss_order)
+                case 3:
+                    #iron condor
+                    #1x short put + 1x long put
+                    #1x short call + 1x long call 
+                    #call and put spreads filled separately
+                    short_call_leg = self.find_option_by_delta(self.short_leg_delta, "C")
+                    long_call_leg = self.find_option_by_delta(self.long_leg_delta, "C", delta_upper_bound=short_call_leg['delta'])
+                    short_put_leg = self.find_option_by_delta(self.short_leg_delta, "P")
+                    long_put_leg = self.find_option_by_delta(self.long_leg_delta, "P", delta_upper_bound=short_put_leg['delta'])
+                    assert(short_call_leg != None and long_call_leg != None and short_put_leg != None and long_put_leg != None)
+                    logging.info(f"Iron condor order: {short_call_leg['contract'].strike}C/{long_call_leg['contract'].strike}C {short_put_leg['contract'].strike}P/{long_put_leg['contract'].strike}P")
+                    combo_contract, order, stop_loss_order = self.create_credit_spread_order([short_call_leg], [long_call_leg], self.stop_loss_percentage)
+                    assert(order != None and stop_loss_order != None)
+                    self.execute_limit_order(combo_contract, order, stop_loss_order)
+                    combo_contract, order, stop_loss_order = self.create_credit_spread_order([short_put_leg], [long_put_leg], self.stop_loss_percentage)
+                    assert(order != None and stop_loss_order != None)
+                    self.execute_limit_order(combo_contract, order, stop_loss_order)
 
         time.sleep(5) #for IBKR to clear pending messages
         logging.info("All trades complete! Disconnecting now...")
@@ -1651,13 +1722,17 @@ class TradeApp(TestWrapper, TestClient):
         event = self.find_event_by_id(reqId)
         #use SMART only
         if not event == None and exchange == "SMART":
-            #for SPX, only SPXW for PM settlement
-            if self.contract.symbol == 'SPX' and not tradingClass == 'SPXW':
-                return
+            #AM settlement is not supported for now
+            #for expiry dates with multiple trading class, note that weeekly trading class is always longer
+            #e.g. SPX for AM and SPXW for PM
 
-            event.option_strikes = strikes
-            event.option_expirations = expirations
-            event.option_trading_class = tradingClass
+            if event.target_expiration != None and event.target_expiration in expirations:
+                if event.option_trading_class == None or len(event.option_trading_class) < len(tradingClass):
+                    #first trading class or PM settlement class found
+                    event.option_strikes = strikes
+                    event.option_expirations = expirations
+                    event.option_trading_class = tradingClass
+                
     # ! [securityDefinitionOptionParameter]
 
     @iswrapper
@@ -1667,6 +1742,33 @@ class TradeApp(TestWrapper, TestClient):
         print("SecurityDefinitionOptionParameterEnd. ReqId:", reqId)
         self.notify_event(reqId)
     # ! [securityDefinitionOptionParameterEnd]
+
+    def cancel_excess_option_request(self, strike: float, side: str):
+        """
+        Cancell requests farther than the specified strike, since their delta is too low
+        """
+        logging.warning("Cancelling option data requests...")
+        rqs = []
+        for k in self.request_events.keys():
+            r = self.request_events[k]
+            if r.is_set() or r.contract == None:
+                #unrelated
+                continue
+
+            if (side == r.contract.right == "P" and r.contract.strike) < strike or (side == r.contract.right == "C" and r.contract.strike > strike):
+                rqs.append(r)
+
+        counter = 0
+        for r in rqs:
+            logging.warning(f"Cancelling request for strike {r.contract.strike}{r.contract.right}")
+            r.set()
+            self.cancelMktData(r.order_id)
+            r.option_req_cancelled = True
+            counter += 1
+            if counter % 20 == 0:
+                time.sleep(1)
+
+
 
     @iswrapper
     # ! [tickoptioncomputation]
@@ -1682,15 +1784,30 @@ class TradeApp(TestWrapper, TestClient):
         #       "Theta:", theta, "UnderlyingPrice:", undPrice)
 
         e = self.find_event_by_id(reqId)
-        if not e == None:
+        if not e == None and delta != None:
             match tickType:
+                case 10:
+                    e.option_delta_bid = round(Decimal(delta),4)
+                    e.check_delta()
+                case 11:
+                    e.option_delta_ask = round(Decimal(delta),4)
+                    e.check_delta()
+                case 12:
+                    e.option_delta_last = round(Decimal(delta),4)
+                    e.check_delta()
                 case 13:
-                    e.option_delta = delta
+                    e.option_delta_model = round(Decimal(delta),4)
+                    e.check_delta()
 
             if e.has_complete_data() and not e.option_req_cancelled:
                 e.set()
                 self.cancelMktData(e.order_id)
                 e.option_req_cancelled = True
+
+                cmp = e.compare_delta(0.01)
+                if cmp != None and cmp > 0:
+                    #delta too small, cancell other requests 
+                    self.cancel_excess_option_request(e.contract.strike, e.contract.right)
 
     # ! [tickoptioncomputation]
 
@@ -2566,7 +2683,7 @@ def main():
     cmdLineParser.add_argument("-q", "--quantity", type=int, dest="quantity", default=1, help="The amount of stock or futures option combos to trade.")
     cmdLineParser.add_argument("-c", "--check_only", type=bool, dest="check_only", default=False, help="Check account position only.")
     cmdLineParser.add_argument("-d", "--dry_run", type=bool, dest="dry_run", default=False, help="Dry run.")
-    cmdLineParser.add_argument("-m", "--mode", type=int, dest="mode", choices=[1,2], default=1, help="Mode: 1 for Bull Put, 2 for Iron Condor")
+    cmdLineParser.add_argument("-m", "--mode", type=int, dest="mode", choices=[1, 2, 3], default=1, help="Mode: 1 for Bull Put, 2 for Bear Call, 3 for Iron Condor")
     cmdLineParser.add_argument("-s", "--short_leg_delta", type=float, dest="short_leg_delta", default=0.16, help="Delta of the short leg. Should be a float in range of [0,1].")
     cmdLineParser.add_argument("-l", "--long_leg_delta", type=float, dest="long_leg_delta", default=0.1, help="Delta of the long leg. Should be a float in range of [0,1].")
     cmdLineParser.add_argument("-x", "--stop_loss_percentage", type=float, dest="stop_loss_percentage", default=3.0, help="Percentage of stop loss as the premium received. e.g. 3.0 for setting stop loss at 300 percent of premium received.")
