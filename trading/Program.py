@@ -501,8 +501,14 @@ class TradeApp(TestWrapper, TestClient):
         contracts = self.search_contracts(contract)
 
         if len(contracts) == 0:
-            logging.warning(f"No contract found for symbol {self.ticker}!")
-            return
+            logging.warning(f"No {contract.secType} contract found for symbol {contract.symbol}!")
+
+            contract.secType = "STK"
+            contracts = self.search_contracts(contract)
+
+            if len(contracts) == 0:
+                logging.warning(f"No {contract.secType} contract found for symbol {contract.symbol}!")
+                raise BaseException(f"No stock, future or index contract found for {contract.symbol}!")
 
         target_con = contracts[0].contract
         self.contract = target_con
