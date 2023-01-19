@@ -201,6 +201,7 @@ class TradeApp(TestWrapper, TestClient):
         self.dte = 0
         self.auto_retry_fill_interval = 0
         self.auto_retry_price_decrement = 0.05
+        self.profit_taking_percentage = 0.0
 
         self.round_interval = 0.05
 
@@ -333,14 +334,15 @@ class TradeApp(TestWrapper, TestClient):
                 OrderSamples.MarketOrder(operation, trade_qty))
             new_order_event.wait()
 
-    def execute_limit_order(self, contract: Contract, order: Order, attached_order: Order = None):
+    def execute_limit_order(self, contract: Contract, order: Order, stop_order: Order = None, profit_taker: Order = None):
         """
         Execute a limit order.
 
         Args:
             contract (Contract): the target contract to buy or sell
             order (Order): the target order
-            attached_order (Order, optional): any attached order (e.g. STP) related to original order, will not wait for it to fill
+            stop_order (Order, optional): any attached stop order (e.g. STP) related to original order, will not wait for it to fill
+            profit_taker (Order, optional): any attached profit taker order related to original order, will not wait for it to fill
         """
         logging.info("Submitting new limit order...")
         event = IBKREvent(self.nextOrderId())
@@ -353,11 +355,18 @@ class TradeApp(TestWrapper, TestClient):
             order.orderId = event.order_id
             self.register_event(event)
             self.placeOrder(event.order_id, contract, order)
-            if not attached_order == None:
-                attached_order_id = self.nextOrderId() #needed for IB but not tracked
-                attached_order.orderId = attached_order_id
-                attached_order.parentId = order.orderId
-                self.placeOrder(attached_order_id, contract, attached_order)
+            
+            if not stop_order == None:
+                stop_order_id = self.nextOrderId() #needed for IB but not tracked
+                stop_order.orderId = stop_order_id
+                stop_order.parentId = order.orderId
+                self.placeOrder(stop_order_id, contract, stop_order)
+            
+            if not profit_taker == None:
+                profit_taker_order_id = self.nextOrderId()
+                profit_taker.orderId = profit_taker_order_id
+                profit_taker.parentId = order.orderId
+                self.placeOrder(profit_taker_order_id, contract, profit_taker)
 
             done = False
             while not done:
@@ -368,14 +377,18 @@ class TradeApp(TestWrapper, TestClient):
                 #retry
                 order.lmtPrice = order.lmtPrice + (self.auto_retry_price_decrement * (1 if order.lmtPrice < 0 else -1))
                 order.lmtPrice = self.round_price(order.lmtPrice)
-                if not attached_order == None:
-                    attached_order.auxPrice = self.round_price(order.lmtPrice * self.stop_loss_percentage)
+                if not stop_order == None:
+                    stop_order.auxPrice = self.round_price(order.lmtPrice * self.stop_loss_percentage)
+                if not profit_taker == None:
+                    profit_taker.lmtPrice = self.round_price(order.lmtPrice * self.profit_taking_percentage)
                     
                 logging.warning(f"Order did not fill after specified interval. Retrying with price {order.lmtPrice}")
                 event.clear()
                 self.placeOrder(order.orderId, contract, order)
-                if not attached_order == None:
-                    self.placeOrder(attached_order.orderId, contract, attached_order)
+                if not stop_order == None:
+                    self.placeOrder(stop_order.orderId, contract, stop_order)
+                if not profit_taker == None:
+                    self.placeOrder(profit_taker.orderId, contract, profit_taker)
 
     def make_daily_trade(self):
         """
@@ -600,7 +613,7 @@ class TradeApp(TestWrapper, TestClient):
 
         if self.options_trading_mode in [1,3]:
             self.get_option_data(target_exp_str, event.option_strikes, "P", event.option_trading_class, get_prices)
-        if self.options_trading_mode in [2,3]:
+        if self.options_trading_mode in [2,3,4]:
             self.get_option_data(target_exp_str, event.option_strikes, "C", event.option_trading_class, get_prices) #may not be needed for 0dte put spread?
 
         return True
@@ -696,6 +709,7 @@ class TradeApp(TestWrapper, TestClient):
                 1. The option combo contract
                 2. IBKR order object for the order
                 3. IBKR order object for the attached stop loss order
+                4. IBKR order object for the profit taker order (if required)
 
         """
         assert(spread != None and len(spread) > 1)
@@ -712,7 +726,7 @@ class TradeApp(TestWrapper, TestClient):
 
         last, bid, ask = self.get_price(contract)
         price = self.round_price((bid + ask) / 2.0)
-        assert(price < 0.0) # credit 
+        #assert(price < 0.0) # credit 
         stop_loss_price = self.round_price(price * stop_loss_percentage)
 
         order = Order()
@@ -722,6 +736,13 @@ class TradeApp(TestWrapper, TestClient):
         order.totalQuantity = self.quantity
         order.lmtPrice = price
         order.transmit = False #prevent race condition according to IBKR doc
+
+        profit_taker = Order()
+        profit_taker.action = "SELL"
+        profit_taker.orderType = "LMT"
+        profit_taker.totalQuantity = self.quantity
+        profit_taker.lmtPrice = self.round_price(price * self.profit_taking_percentage)
+        profit_taker.transmit = False
         
         stop_order = Order()
         #stop_order.orderId = self.nextOrderId()
@@ -732,9 +753,9 @@ class TradeApp(TestWrapper, TestClient):
         stop_order.auxPrice = stop_loss_price
         stop_order.transmit = True
 
-        return (contract, order, stop_order)
+        return (contract, order, stop_order, None if self.profit_taking_percentage == 0.0 else profit_taker)
 
-    def create_credit_spread_order(self, short_leg: dict | list[dict], long_leg: dict | list[dict], stop_loss_percentage: float):
+    def create_credit_spread_order(self, short_leg: dict | list[dict], long_leg: dict | list[dict], stop_loss_percentage: float, ratio: tuple = (1, 1)):
         """
         Create a IBKR Bull Put, Bear Call or Iron Condor order with stop loss as attached order.
 
@@ -742,15 +763,19 @@ class TradeApp(TestWrapper, TestClient):
             short_leg (dict | list[dict]): the dict or list of it with the short leg option contract(s) in the "contract" key.
             long_leg (dict | list[dict]): the dict or the list of it with the long leg option contract(s) in the "contract" key.
             stop_loss_percentage (float): percentage of stop loss as premium received e.g. 3.0 for 300% stop loss as premium received.
+            ratio (tuple, optional): tuple containing the ratio between long to short legs e.g. (1, 1) for a Bull Put order
 
         Returns:
             A tuple containing:
                 1. The Bull Put option combo contract
                 2. IBKR order object for the Bull Put/Bear Call order
                 3. IBKR order object for the attached stop loss order
+                4. IBKR order object for the attached profit taker order
         """
         assert(short_leg != None)
         assert(long_leg != None)
+        long_ratio = ratio[0]
+        short_ratio = ratio[1]
 
         spread = []
         shorts: list = short_leg if type(short_leg) == list else [short_leg]
@@ -767,7 +792,7 @@ class TradeApp(TestWrapper, TestClient):
 
             leg = ComboLeg()
             leg.conId = contract_details.contract.conId
-            leg.ratio = 1
+            leg.ratio = long_ratio if s in longs else short_ratio
             leg.action = "SELL" if s in shorts else "BUY"
             leg.exchange = "SMART"
             spread.append(leg)
@@ -779,6 +804,25 @@ class TradeApp(TestWrapper, TestClient):
             stop_loss_percentage, 
             min_tick
             )
+
+    def execute_option_spread_order(self, short_leg: dict, long_leg: dict, ratio: tuple = (1, 1)):
+        """
+        Execute a spread order given long and short option legs.
+
+        Args:
+            short_leg (dict | list[dict]): dict or list of it containing the 'contract' field for the Contract object for the short option(s).
+            long_leg (dict | list[dict]): dict or list of it containing the 'contract' field for the Contract object for the long option(s).
+            ratio (tuple, optional): tuple containing the ratio between long to short legs e.g. (1, 1) for a Bull Put order
+        """
+        short_leg = [short_leg] if type(short_leg) == dict else short_leg
+        long_leg = [long_leg] if type(long_leg) == dict else long_leg
+        assert(short_leg != None and long_leg != None)
+        logging.info(f"Spread order:")
+        logging.info(f"- Short strike(s): {','.join([str(s['contract'].strike) for s in short_leg])}")
+        logging.info(f"- Long strike(s): {','.join([str(s['contract'].strike) for s in long_leg])}")
+        combo_contract, order, stop_loss_order, profit_taker = self.create_credit_spread_order(short_leg, long_leg, self.stop_loss_percentage, ratio)
+        assert(order != None and stop_loss_order != None)
+        self.execute_limit_order(combo_contract, order, stop_loss_order, profit_taker)
 
     def trading_thread(self):
         """
@@ -805,25 +849,25 @@ class TradeApp(TestWrapper, TestClient):
             order = None
             match self.options_trading_mode:
                 case 1:
-                    #bull put
+                    #bull / bear put
                     #1x short put + 1x long put 
                     short_leg = self.find_option_by_delta(self.short_leg_delta, "P")
-                    long_leg = self.find_option_by_delta(self.long_leg_delta, "P", delta_upper_bound=short_leg['delta'])
-                    assert(short_leg != None and long_leg != None)
-                    logging.info(f"Bull put order: {short_leg['contract'].strike}P/{long_leg['contract'].strike}P")
-                    combo_contract, order, stop_loss_order = self.create_credit_spread_order(short_leg, long_leg, self.stop_loss_percentage)
-                    assert(order != None and stop_loss_order != None)
-                    self.execute_limit_order(combo_contract, order, stop_loss_order)
+                    long_leg = self.find_option_by_delta(
+                        self.long_leg_delta, 
+                        "P", 
+                        delta_upper_bound=None if self.short_leg_delta < self.long_leg_delta else short_leg['delta'],
+                        delta_lower_bound=None if self.short_leg_delta > self.long_leg_delta else short_leg['delta'])
+                    self.execute_option_spread_order(short_leg, long_leg)
                 case 2:
-                    #bear call
+                    #bear / bull call
                     #1x short call + 1x long call 
                     short_leg = self.find_option_by_delta(self.short_leg_delta, "C")
-                    long_leg = self.find_option_by_delta(self.long_leg_delta, "C", delta_upper_bound=short_leg['delta'])
-                    assert(short_leg != None and long_leg != None)
-                    logging.info(f"Bear call order: {short_leg['contract'].strike}C/{long_leg['contract'].strike}C")
-                    combo_contract, order, stop_loss_order = self.create_credit_spread_order(short_leg, long_leg, self.stop_loss_percentage)
-                    assert(order != None and stop_loss_order != None)
-                    self.execute_limit_order(combo_contract, order, stop_loss_order)
+                    long_leg = self.find_option_by_delta(
+                        self.long_leg_delta, 
+                        "C", 
+                        delta_upper_bound=None if self.short_leg_delta < self.long_leg_delta else short_leg['delta'],
+                        delta_lower_bound=None if self.short_leg_delta > self.long_leg_delta else short_leg['delta'])
+                    self.execute_option_spread_order(short_leg, long_leg)
                 case 3:
                     #iron condor
                     #1x short put + 1x long put
@@ -834,13 +878,15 @@ class TradeApp(TestWrapper, TestClient):
                     short_put_leg = self.find_option_by_delta(self.short_leg_delta, "P")
                     long_put_leg = self.find_option_by_delta(self.long_leg_delta, "P", delta_upper_bound=short_put_leg['delta'])
                     assert(short_call_leg != None and long_call_leg != None and short_put_leg != None and long_put_leg != None)
-                    logging.info(f"Iron condor order: {short_call_leg['contract'].strike}C/{long_call_leg['contract'].strike}C {short_put_leg['contract'].strike}P/{long_put_leg['contract'].strike}P")
-                    combo_contract, order, stop_loss_order = self.create_credit_spread_order([short_call_leg], [long_call_leg], self.stop_loss_percentage)
-                    assert(order != None and stop_loss_order != None)
-                    self.execute_limit_order(combo_contract, order, stop_loss_order)
-                    combo_contract, order, stop_loss_order = self.create_credit_spread_order([short_put_leg], [long_put_leg], self.stop_loss_percentage)
-                    assert(order != None and stop_loss_order != None)
-                    self.execute_limit_order(combo_contract, order, stop_loss_order)
+                    self.execute_option_spread_order(short_call_leg, long_call_leg)
+                    self.execute_option_spread_order(short_put_leg, long_put_leg)
+                case 4:
+                    #Iron butterfly
+                    otm_leg_delta = 1 - self.long_leg_delta
+                    itm_leg = self.find_option_by_delta(self.long_leg_delta, "C")
+                    atm_leg = self.find_option_by_delta(0.5, "C")
+                    otm_leg = self.find_option_by_delta(otm_leg_delta, "C")
+                    self.execute_option_spread_order(atm_leg, [itm_leg, otm_leg], (1, 2))
 
         time.sleep(5) #for IBKR to clear pending messages
         logging.info("All trades complete! Disconnecting now...")
@@ -2586,7 +2632,8 @@ def run(
     stop_loss_percentage: float = 0, 
     dte: int = 0,
     auto_retry_fill_interval: int = 0,
-    auto_retry_price_decrement: float = 0.05
+    auto_retry_price_decrement: float = 0.05,
+    profit_taking_percentage: float = 0.0
     ):
     stocks = []
     futures = []
@@ -2612,7 +2659,8 @@ def run(
         stop_loss_percentage, 
         dte,
         auto_retry_fill_interval,
-        auto_retry_price_decrement
+        auto_retry_price_decrement,
+        profit_taking_percentage
         )
 
 def run_trading_program(
@@ -2627,7 +2675,8 @@ def run_trading_program(
     stop_loss_percentage: float = 0, 
     dte: int = 0,
     auto_retry_fill_interval: int = 0,
-    auto_retry_price_decrement: float = 0.05
+    auto_retry_price_decrement: float = 0.05,
+    profit_taking_percentage: float = 0.0
     ):
     logging.debug("now is %s", datetime.datetime.now())
 
@@ -2661,6 +2710,7 @@ def run_trading_program(
         app.dte = dte
         app.auto_retry_fill_interval = auto_retry_fill_interval
         app.auto_retry_price_decrement = auto_retry_price_decrement
+        app.profit_taking_percentage = profit_taking_percentage
 
         #ip = get_wsl_host_ip()
         ip = "localhost"
@@ -2689,13 +2739,14 @@ def main():
     cmdLineParser.add_argument("-q", "--quantity", type=int, dest="quantity", default=1, help="The amount of stock or futures option combos to trade.")
     cmdLineParser.add_argument("-c", "--check_only", type=bool, dest="check_only", default=False, help="Check account position only.")
     cmdLineParser.add_argument("-d", "--dry_run", type=bool, dest="dry_run", default=False, help="Dry run.")
-    cmdLineParser.add_argument("-m", "--mode", type=int, dest="mode", choices=[1, 2, 3], default=1, help="Mode: 1 for Bull Put, 2 for Bear Call, 3 for Iron Condor")
+    cmdLineParser.add_argument("-m", "--mode", type=int, dest="mode", choices=[1, 2, 3, 4], default=1, help="Mode: 1 for Bull Put, 2 for Bear Call, 3 for Iron Condor")
     cmdLineParser.add_argument("-s", "--short_leg_delta", type=float, dest="short_leg_delta", default=0.16, help="Delta of the short leg. Should be a float in range of [0,1].")
     cmdLineParser.add_argument("-l", "--long_leg_delta", type=float, dest="long_leg_delta", default=0.1, help="Delta of the long leg. Should be a float in range of [0,1].")
     cmdLineParser.add_argument("-x", "--stop_loss_percentage", type=float, dest="stop_loss_percentage", default=3.0, help="Percentage of stop loss as the premium received. e.g. 3.0 for setting stop loss at 300 percent of premium received.")
     cmdLineParser.add_argument("-e", "--day_to_expiry", type=int, default=0, dest="dte", help="Day to expiry for the target option contract(s).")
     cmdLineParser.add_argument("-ai", "--auto_retry_fill_interval", type=int, default=0, dest="auto_retry_fill_interval", help="If set and is larger than zero, order will be resubmitted by the interval specified. In each interal, order price will be decremented by the amount specified by param -ap.")
     cmdLineParser.add_argument("-ap", "--auto_retry_price_decrement", type=float, default=0.05, dest="auto_retry_price_decrement", help="Decrements price towards 0 by the value specified each time the order is resubmitted.")
+    cmdLineParser.add_argument("-pt", "--profit_taking_percentage", type=float, default=0.0, dest="profit_taking_percentage", help="Percentage of premium for the profit taking order. e.g. 0.5 to take profit at 50% of credit received. If unset or set to 0, will not send profit taking orders to IBKR.")
     group = cmdLineParser.add_mutually_exclusive_group()
     group.add_argument("-t", "--ticker", type=str, dest="ticker", required=False, default="", help="Ticker to trade. Can be US stocks or indexes with options only. Cannot be used with -f flag at the same time.")
     group.add_argument("-f", "--future", type=str, dest="future", required=False, default="", help="[NOT IMPLEMENTED YET] Futures contract to trade. Cannot be used with -t flag at the same time.")
@@ -2716,7 +2767,8 @@ def main():
     args.stop_loss_percentage, 
     args.dte,
     args.auto_retry_fill_interval,
-    args.auto_retry_price_decrement)
+    args.auto_retry_price_decrement,
+    args.profit_taking_percentage)
 
 def setup_logging():
     import os
