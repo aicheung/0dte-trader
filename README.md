@@ -11,7 +11,7 @@ Supports the follwing option spreads:
 ## Installation
 Python 3.10 is assumed. 
 1. Create a virtual environment and then `pip install ibapi-10.20.1-py3-none-any.whl` to install the IBKR API.
-2. Run the code by executing `python -m trading.Program` with the command line options or environment variables (WIP) as specified below. e.g. to trade a Bull Put, run `python -m trading.Program -p 4002 -q 1 -t SPX -m 1 -s 0.05 -l 0.03 -x 3.0 -e 1`
+2. Run the code by executing `python -m trading.Program` with the command line options or environment variables as specified below. e.g. to trade a Bull Put, run `python -m trading.Program -p 4002 -q 1 -t SPX -m 1 -s 0.05 -l 0.03 -x 3.0 -e 1`
 
 ## Command Line Arguments / Environment Variables
 
