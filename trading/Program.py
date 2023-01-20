@@ -13,6 +13,7 @@ from platform import uname
 import copy
 from operator import attrgetter
 from decimal import Decimal
+import os
 
 import logging
 import time
@@ -2735,21 +2736,21 @@ def run_trading_program(
 def main():
     cmdLineParser = argparse.ArgumentParser("Trade 0DTE (or longer duration) options.")
     cmdLineParser.add_argument("-p", "--port", action="store", type=int,
-                               dest="port", default=7496, help="The TCP port to use")
-    cmdLineParser.add_argument("-q", "--quantity", type=int, dest="quantity", default=1, help="The amount of stock or futures option combos to trade.")
-    cmdLineParser.add_argument("-c", "--check_only", type=bool, dest="check_only", default=False, help="Check account position only.")
-    cmdLineParser.add_argument("-d", "--dry_run", type=bool, dest="dry_run", default=False, help="Dry run.")
-    cmdLineParser.add_argument("-m", "--mode", type=int, dest="mode", choices=[1, 2, 3, 4], default=1, help="Mode: 1 for Bull Put, 2 for Bear Call, 3 for Iron Condor")
-    cmdLineParser.add_argument("-s", "--short_leg_delta", type=float, dest="short_leg_delta", default=0.16, help="Delta of the short leg. Should be a float in range of [0,1].")
-    cmdLineParser.add_argument("-l", "--long_leg_delta", type=float, dest="long_leg_delta", default=0.1, help="Delta of the long leg. Should be a float in range of [0,1].")
-    cmdLineParser.add_argument("-x", "--stop_loss_percentage", type=float, dest="stop_loss_percentage", default=3.0, help="Percentage of stop loss as the premium received. e.g. 3.0 for setting stop loss at 300 percent of premium received.")
-    cmdLineParser.add_argument("-e", "--day_to_expiry", type=int, default=0, dest="dte", help="Day to expiry for the target option contract(s).")
-    cmdLineParser.add_argument("-ai", "--auto_retry_fill_interval", type=int, default=0, dest="auto_retry_fill_interval", help="If set and is larger than zero, order will be resubmitted by the interval specified. In each interal, order price will be decremented by the amount specified by param -ap.")
-    cmdLineParser.add_argument("-ap", "--auto_retry_price_decrement", type=float, default=0.05, dest="auto_retry_price_decrement", help="Decrements price towards 0 by the value specified each time the order is resubmitted.")
-    cmdLineParser.add_argument("-pt", "--profit_taking_percentage", type=float, default=0.0, dest="profit_taking_percentage", help="Percentage of premium for the profit taking order. e.g. 0.5 to take profit at 50% of credit received. If unset or set to 0, will not send profit taking orders to IBKR.")
+                               dest="port", default=os.environ.get("PORT", 7496), help="The TCP port to use")
+    cmdLineParser.add_argument("-q", "--quantity", type=int, dest="quantity", default=os.environ.get("QUANTITY", 1), help="The amount of stock or futures option combos to trade.")
+    cmdLineParser.add_argument("-c", "--check_only", type=bool, dest="check_only", default=os.environ.get("CHECK_ONLY", False), help="Check account position only.")
+    cmdLineParser.add_argument("-d", "--dry_run", type=bool, dest="dry_run", default=os.environ.get("DRY_RUN", "false").lower() == "true", help="Dry run.")
+    cmdLineParser.add_argument("-m", "--mode", type=int, dest="mode", choices=[1, 2, 3, 4], default=os.environ.get("MODE", 1), help="Mode: 1 for Bull Put, 2 for Bear Call, 3 for Iron Condor")
+    cmdLineParser.add_argument("-s", "--short_leg_delta", type=float, dest="short_leg_delta", default=os.environ.get("SHORT_LEG_DELTA", 0.16), help="Delta of the short leg. Should be a float in range of [0,1].")
+    cmdLineParser.add_argument("-l", "--long_leg_delta", type=float, dest="long_leg_delta", default=os.environ.get("LONG_LEG_DELTA", 0.1), help="Delta of the long leg. Should be a float in range of [0,1].")
+    cmdLineParser.add_argument("-x", "--stop_loss_percentage", type=float, dest="stop_loss_percentage", default=os.environ.get("STOP_LOSS_PERCENTAGE", 3.0), help="Percentage of stop loss as the premium received. e.g. 3.0 for setting stop loss at 300 percent of premium received.")
+    cmdLineParser.add_argument("-e", "--day_to_expiry", type=int, default=os.environ.get("DAY_TO_EXPIRY", 0), dest="dte", help="Day to expiry for the target option contract(s).")
+    cmdLineParser.add_argument("-ai", "--auto_retry_fill_interval", type=int, default=os.environ.get("AUTO_RETRY_INTERVAL", 10), dest="auto_retry_fill_interval", help="If set and is larger than zero, order will be resubmitted by the interval specified. In each interal, order price will be decremented by the amount specified by param -ap.")
+    cmdLineParser.add_argument("-ap", "--auto_retry_price_decrement", type=float, default=os.environ.get("AUTO_RETRY_PRICE_DECREMENT", 0.5), dest="auto_retry_price_decrement", help="Decrements price towards 0 by the value specified each time the order is resubmitted.")
+    cmdLineParser.add_argument("-pt", "--profit_taking_percentage", type=float, default=os.environ.get("PROFIT_TAKING_PERCENTAGE", 0.0), dest="profit_taking_percentage", help="Percentage of premium for the profit taking order. e.g. 0.5 to take profit at 50% of credit received. If unset or set to 0, will not send profit taking orders to IBKR.")
     group = cmdLineParser.add_mutually_exclusive_group()
-    group.add_argument("-t", "--ticker", type=str, dest="ticker", required=False, default="", help="Ticker to trade. Can be US stocks or indexes with options only. Cannot be used with -f flag at the same time.")
-    group.add_argument("-f", "--future", type=str, dest="future", required=False, default="", help="[NOT IMPLEMENTED YET] Futures contract to trade. Cannot be used with -t flag at the same time.")
+    group.add_argument("-t", "--ticker", type=str, dest="ticker", required=False, default=os.environ.get("TICKER", ""), help="Ticker to trade. Can be US stocks or indexes with options only. Cannot be used with -f flag at the same time.")
+    group.add_argument("-f", "--future", type=str, dest="future", required=False, default=os.environ.get("FUTURE", ""), help="[NOT IMPLEMENTED YET] Futures contract to trade. Cannot be used with -t flag at the same time.")
     args = cmdLineParser.parse_args()
     print("Using args", args)
     logging.debug("Using args %s", args)
