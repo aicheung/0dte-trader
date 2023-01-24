@@ -39,11 +39,6 @@ from ibapi.tag_value import TagValue
 from ibapi.account_summary_tags import *
 from trading.IBKREvent import IBKREvent
 
-from trading.ContractSamples import ContractSamples
-from trading.OrderSamples import OrderSamples
-from trading.AvailableAlgoParams import AvailableAlgoParams
-from trading.ScannerSubscriptionSamples import ScannerSubscriptionSamples
-from trading.FaAllocationSamples import FaAllocationSamples
 from ibapi.scanner import ScanData
 
 FUTURES_ROLLOVER_THREASHOLD = 14
@@ -962,34 +957,6 @@ class TradeApp(TestWrapper, TestClient):
             print("Executing requests")
             thread = threading.Thread(target=self.trading_thread, name="TradingThread")
             thread.start()
-            #self.reqGlobalCancel()
-            #self.marketDataTypeOperations()
-            #self.accountOperations_req()
-            #self.tickDataOperations_req()
-            #self.tickOptionComputations_req()
-            #self.marketDepthOperations_req()
-            #self.realTimeBarsOperations_req()
-            #self.historicalDataOperations_req()
-            #self.optionsOperations_req()
-            #self.marketScannersOperations_req()
-            #self.fundamentalsOperations_req()
-            #self.bulletinsOperations_req()
-            #self.contractOperations()
-            #self.newsOperations_req()
-            #self.miscelaneousOperations()
-            #self.linkingOperations()
-            #self.financialAdvisorOperations()
-            #self.orderOperations_req()
-            #self.orderOperations_cancel()
-            #self.rerouteCFDOperations()
-            #self.marketRuleOperations()
-            #self.pnlOperations_req()
-            #self.histogramOperations_req()
-            #self.continuousFuturesOperations_req()
-            #self.historicalTicksOperations()
-            #self.tickByTickOperations_req()
-            #self.whatIfOrderOperations()
-            #self.wshCalendarOperations()
             
             print("Executing requests ... finished")
 
@@ -1002,24 +969,7 @@ class TradeApp(TestWrapper, TestClient):
             self.done = True
 
     def stop(self):
-        print("Executing cancels")
-        #self.orderOperations_cancel()
-        #self.accountOperations_cancel()
-        #self.tickDataOperations_cancel()
-        #self.tickOptionComputations_cancel()
-        #self.marketDepthOperations_cancel()
-        #self.realTimeBarsOperations_cancel()
-        #self.historicalDataOperations_cancel()
-        #self.optionsOperations_cancel()
-        #self.marketScanners_cancel()
-        #self.fundamentalsOperations_cancel()
-        #self.bulletinsOperations_cancel()
-        #self.newsOperations_cancel()
-        #self.pnlOperations_cancel()
-        #self.histogramOperations_cancel()
-        #self.continuousFuturesOperations_cancel()
-        #self.tickByTickOperations_cancel()
-        print("Executing cancels ... finished")
+        pass #placeholder for IBKR code
 
     def nextOrderId(self):
         oid = self.nextValidOrderId
@@ -1095,83 +1045,6 @@ class TradeApp(TestWrapper, TestClient):
             if event is not None and not event.is_set() and remaining == 0:
                 event.set()
     # ! [orderstatus]
-
-
-    @printWhenExecuting
-    def accountOperations_req(self):
-        #self.reqAccountSummary(9001, "All", AccountSummaryTags.AllTags)
-        # Requesting all accounts' positions.
-        # ! [reqpositions]
-        self.reqPositions()
-        # ! [reqpositions]
-
-    @printWhenExecuting
-    def accountOperations_cancel(self):
-        # ! [cancelaaccountsummary]
-        self.cancelAccountSummary(9001)
-        self.cancelAccountSummary(9002)
-        self.cancelAccountSummary(9003)
-        self.cancelAccountSummary(9004)
-        # ! [cancelaaccountsummary]
-
-        # ! [cancelaaccountupdates]
-        self.reqAccountUpdates(False, self.account)
-        # ! [cancelaaccountupdates]
-
-        # ! [cancelaaccountupdatesmulti]
-        self.cancelAccountUpdatesMulti(9005)
-        # ! [cancelaaccountupdatesmulti]
-
-        # ! [cancelpositions]
-        self.cancelPositions()
-        # ! [cancelpositions]
-
-        # ! [cancelpositionsmulti]
-        self.cancelPositionsMulti(9006)
-        # ! [cancelpositionsmulti]
-
-    def pnlOperations_req(self):
-        # ! [reqpnl]
-        self.reqPnL(17001, "DU111519", "")
-        # ! [reqpnl]
-
-        # ! [reqpnlsingle]
-        self.reqPnLSingle(17002, "DU111519", "", 8314);
-        # ! [reqpnlsingle]
-
-    def pnlOperations_cancel(self):
-        # ! [cancelpnl]
-        self.cancelPnL(17001)
-        # ! [cancelpnl]
-
-        # ! [cancelpnlsingle]
-        self.cancelPnLSingle(17002);
-        # ! [cancelpnlsingle]
-
-    def histogramOperations_req(self):
-        # ! [reqhistogramdata]
-        self.reqHistogramData(4002, ContractSamples.USStockAtSmart(), False, "3 days");
-        # ! [reqhistogramdata]
-
-    def histogramOperations_cancel(self):
-        # ! [cancelhistogramdata]
-        self.cancelHistogramData(4002);
-        # ! [cancelhistogramdata]
-
-    def continuousFuturesOperations_req(self):
-        # ! [reqcontractdetailscontfut]
-        self.reqContractDetails(18001, ContractSamples.ContFut())
-        # ! [reqcontractdetailscontfut]
-
-        # ! [reqhistoricaldatacontfut]
-        timeStr = datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%d-%H:%M:%S')
-        self.reqHistoricalData(18002, ContractSamples.ContFut(), timeStr, "1 Y", "1 month", "TRADES", 0, 1, False, []);
-        # ! [reqhistoricaldatacontfut]
-
-    def continuousFuturesOperations_cancel(self):
-        # ! [cancelhistoricaldatacontfut]
-        self.cancelHistoricalData(18002);
-        # ! [cancelhistoricaldatacontfut]
 
     @iswrapper
     # ! [managedaccounts]
@@ -1338,138 +1211,12 @@ class TradeApp(TestWrapper, TestClient):
               "RealizedPnL:", floatMaxString(realizedPnL), "Value:", floatMaxString(value))
     # ! [pnlsingle]
 
-    def marketDataTypeOperations(self):
-        # ! [reqmarketdatatype]
-        # Switch to live (1) frozen (2) delayed (3) delayed frozen (4).
-        self.reqMarketDataType(MarketDataTypeEnum.DELAYED)
-        # ! [reqmarketdatatype]
-
     @iswrapper
     # ! [marketdatatype]
     def marketDataType(self, reqId: TickerId, marketDataType: int):
         super().marketDataType(reqId, marketDataType)
         print("MarketDataType. ReqId:", reqId, "Type:", marketDataType)
     # ! [marketdatatype]
-
-    @printWhenExecuting
-    def tickDataOperations_req(self):
-        self.reqMarketDataType(MarketDataTypeEnum.DELAYED_FROZEN)
-        
-        # Requesting real time market data
-
-        # ! [reqmktdata]
-        self.reqMktData(1000, ContractSamples.USStockAtSmart(), "", False, False, [])
-        self.reqMktData(1001, ContractSamples.StockComboContract(), "", False, False, [])
-        # ! [reqmktdata]
-
-        # ! [reqmktdata_snapshot]
-        self.reqMktData(1002, ContractSamples.FutureComboContract(), "", True, False, [])
-        # ! [reqmktdata_snapshot]
-
-        # ! [regulatorysnapshot]
-        # Each regulatory snapshot request incurs a 0.01 USD fee
-        self.reqMktData(1003, ContractSamples.USStock(), "", False, True, [])
-        # ! [regulatorysnapshot]
-
-        # ! [reqmktdata_genticks]
-        # Requesting RTVolume (Time & Sales) and shortable generic ticks
-        self.reqMktData(1004, ContractSamples.USStockAtSmart(), "233,236", False, False, [])
-        # ! [reqmktdata_genticks]
-
-        # ! [reqmktdata_contractnews]
-        # Without the API news subscription this will generate an "invalid tick type" error
-        self.reqMktData(1005, ContractSamples.USStockAtSmart(), "mdoff,292:BRFG", False, False, [])
-        self.reqMktData(1006, ContractSamples.USStockAtSmart(), "mdoff,292:BRFG+DJNL", False, False, [])
-        self.reqMktData(1007, ContractSamples.USStockAtSmart(), "mdoff,292:BRFUPDN", False, False, [])
-        self.reqMktData(1008, ContractSamples.USStockAtSmart(), "mdoff,292:DJ-RT", False, False, [])
-        # ! [reqmktdata_contractnews]
-
-
-        # ! [reqmktdata_broadtapenews]
-        self.reqMktData(1009, ContractSamples.BTbroadtapeNewsFeed(), "mdoff,292", False, False, [])
-        self.reqMktData(1010, ContractSamples.BZbroadtapeNewsFeed(), "mdoff,292", False, False, [])
-        self.reqMktData(1011, ContractSamples.FLYbroadtapeNewsFeed(), "mdoff,292", False, False, [])
-        # ! [reqmktdata_broadtapenews]
-
-        # ! [reqoptiondatagenticks]
-        # Requesting data for an option contract will return the greek values
-        self.reqMktData(1013, ContractSamples.OptionWithLocalSymbol(), "", False, False, [])
-        self.reqMktData(1014, ContractSamples.FuturesOnOptions(), "", False, False, []);
-        
-        # ! [reqoptiondatagenticks]
-
-        # ! [reqfuturesopeninterest]
-        self.reqMktData(1015, ContractSamples.SimpleFuture(), "mdoff,588", False, False, [])
-        # ! [reqfuturesopeninterest]
-
-        # ! [reqmktdatapreopenbidask]
-        self.reqMktData(1016, ContractSamples.SimpleFuture(), "", False, False, [])
-        # ! [reqmktdatapreopenbidask]
-
-        # ! [reqavgoptvolume]
-        self.reqMktData(1017, ContractSamples.USStockAtSmart(), "mdoff,105", False, False, [])
-        # ! [reqavgoptvolume]
-        
-        # ! [reqsmartcomponents]
-        # Requests description of map of single letter exchange codes to full exchange names
-        self.reqSmartComponents(1018, "a6")
-        # ! [reqsmartcomponents]
-        
-        # ! [reqetfticks]
-        self.reqMktData(1019, ContractSamples.etf(), "mdoff,576,577,578,623,614", False, False, [])
-        # ! [reqetfticks]
-
-        # ! [reqetfticks]
-        self.reqMktData(1020, ContractSamples.StockWithIPOPrice(), "mdoff,586", False, False, [])
-        # ! [reqetfticks]
-        
-
-    @printWhenExecuting
-    def tickDataOperations_cancel(self):
-        # Canceling the market data subscription
-        # ! [cancelmktdata]
-        self.cancelMktData(1000)
-        self.cancelMktData(1001)
-        # ! [cancelmktdata]
-
-        self.cancelMktData(1004)
-        
-        self.cancelMktData(1005)
-        self.cancelMktData(1006)
-        self.cancelMktData(1007)
-        self.cancelMktData(1008)
-        
-        self.cancelMktData(1009)
-        self.cancelMktData(1010)
-        self.cancelMktData(1011)
-        self.cancelMktData(1012)
-        
-        self.cancelMktData(1013)
-        self.cancelMktData(1014)
-        
-        self.cancelMktData(1015)
-        
-        self.cancelMktData(1016)
-        
-        self.cancelMktData(1017)
-
-        self.cancelMktData(1019)
-        self.cancelMktData(1020)
-
-    @printWhenExecuting
-    def tickOptionComputations_req(self):
-        self.reqMarketDataType(MarketDataTypeEnum.DELAYED_FROZEN)
-        # Requesting options computations
-        # ! [reqoptioncomputations]
-        self.reqMktData(1000, ContractSamples.OptionWithLocalSymbol(), "", False, False, [])
-        # ! [reqoptioncomputations]
-
-    @printWhenExecuting
-    def tickOptionComputations_cancel(self):
-        # Canceling options computations
-        # ! [canceloptioncomputations]
-        self.cancelMktData(1000)
-        # ! [canceloptioncomputations]
 
     @iswrapper
     # ! [tickprice]
@@ -1538,40 +1285,6 @@ class TradeApp(TestWrapper, TestClient):
         for priceIncrement in priceIncrements:
             print("Price Increment.", priceIncrement)
     # ! [marketRule]
-
-    @printWhenExecuting
-    def tickByTickOperations_req(self):
-        # Requesting tick-by-tick data (only refresh)
-        # ! [reqtickbytick]
-        self.reqTickByTickData(19001, ContractSamples.EuropeanStock2(), "Last", 0, True)
-        self.reqTickByTickData(19002, ContractSamples.EuropeanStock2(), "AllLast", 0, False)
-        self.reqTickByTickData(19003, ContractSamples.EuropeanStock2(), "BidAsk", 0, True)
-        self.reqTickByTickData(19004, ContractSamples.EurGbpFx(), "MidPoint", 0, False)
-        # ! [reqtickbytick]
-
-        # Requesting tick-by-tick data (refresh + historicalticks)
-        # ! [reqtickbytickwithhist]
-        self.reqTickByTickData(19005, ContractSamples.EuropeanStock2(), "Last", 10, False)
-        self.reqTickByTickData(19006, ContractSamples.EuropeanStock2(), "AllLast", 10, False)
-        self.reqTickByTickData(19007, ContractSamples.EuropeanStock2(), "BidAsk", 10, False)
-        self.reqTickByTickData(19008, ContractSamples.EurGbpFx(), "MidPoint", 10, True)
-        # ! [reqtickbytickwithhist]
-
-    @printWhenExecuting
-    def tickByTickOperations_cancel(self):
-        # ! [canceltickbytick]
-        self.cancelTickByTickData(19001)
-        self.cancelTickByTickData(19002)
-        self.cancelTickByTickData(19003)
-        self.cancelTickByTickData(19004)
-        # ! [canceltickbytick]
-
-        # ! [canceltickbytickwithhist]
-        self.cancelTickByTickData(19005)
-        self.cancelTickByTickData(19006)
-        self.cancelTickByTickData(19007)
-        self.cancelTickByTickData(19008)
-        # ! [canceltickbytickwithhist]
         
     @iswrapper
     # ! [orderbound]
@@ -1618,30 +1331,6 @@ class TradeApp(TestWrapper, TestClient):
               "MidPoint:", floatMaxString(midPoint))
     # ! [tickbytickmidpoint]
 
-    @printWhenExecuting
-    def marketDepthOperations_req(self):
-        # Requesting the Deep Book
-        # ! [reqmarketdepth]
-        self.reqMktDepth(2001, ContractSamples.EurGbpFx(), 5, False, [])
-        # ! [reqmarketdepth]
-
-        # ! [reqmarketdepth]
-        self.reqMktDepth(2002, ContractSamples.EuropeanStock(), 5, True, [])
-        # ! [reqmarketdepth]
-
-        # Request list of exchanges sending market depth to UpdateMktDepthL2()
-        # ! [reqMktDepthExchanges]
-        self.reqMktDepthExchanges()
-        # ! [reqMktDepthExchanges]
-
-    @printWhenExecuting
-    def marketDepthOperations_cancel(self):
-        # Canceling the Deep Book request
-        # ! [cancelmktdepth]
-        self.cancelMktDepth(2001, False)
-        self.cancelMktDepth(2002, True)
-        # ! [cancelmktdepth]
-
     @iswrapper
     # ! [updatemktdepth]
     def updateMktDepth(self, reqId: TickerId, position: int, operation: int,
@@ -1669,13 +1358,6 @@ class TradeApp(TestWrapper, TestClient):
         print("Re-route market depth request. ReqId:", reqId, "ConId:", conId, "Exchange:", exchange)
     # ! [rerouteMktDepthReq]
 
-    @printWhenExecuting
-    def realTimeBarsOperations_req(self):
-        # Requesting real time bars
-        # ! [reqrealtimebars]
-        self.reqRealTimeBars(3001, ContractSamples.EurGbpFx(), 5, "MIDPOINT", True, [])
-        # ! [reqrealtimebars]
-
     @iswrapper
     # ! [realtimebar]
     def realtimeBar(self, reqId: TickerId, time:int, open_: float, high: float, low: float, close: float,
@@ -1683,56 +1365,6 @@ class TradeApp(TestWrapper, TestClient):
         super().realtimeBar(reqId, time, open_, high, low, close, volume, wap, count)
         print("RealTimeBar. TickerId:", reqId, RealTimeBar(time, -1, open_, high, low, close, volume, wap, count))
     # ! [realtimebar]
-
-    @printWhenExecuting
-    def realTimeBarsOperations_cancel(self):
-        # Canceling real time bars
-        # ! [cancelrealtimebars]
-        self.cancelRealTimeBars(3001)
-        # ! [cancelrealtimebars]
-
-    @printWhenExecuting
-    def historicalDataOperations_req(self):
-        # Requesting historical data
-        # ! [reqHeadTimeStamp]
-        self.reqHeadTimeStamp(4101, ContractSamples.USStockAtSmart(), "TRADES", 0, 1)
-        # ! [reqHeadTimeStamp]
-
-        # ! [reqhistoricaldata]
-        queryTime = (datetime.datetime.today() - datetime.timedelta(days=180)).strftime("%Y%m%d-%H:%M:%S")
-        self.reqHistoricalData(4102, ContractSamples.EurGbpFx(), queryTime,
-                               "1 M", "1 day", "MIDPOINT", 1, 1, False, [])
-        self.reqHistoricalData(4103, ContractSamples.EuropeanStock(), queryTime,
-                               "10 D", "1 min", "TRADES", 1, 1, False, [])
-        self.reqHistoricalData(4104, ContractSamples.EurGbpFx(), "",
-                               "1 M", "1 day", "MIDPOINT", 1, 1, True, [])
-        self.reqHistoricalData(4103, ContractSamples.USStockAtSmart(), queryTime,
-                               "1 M", "1 day", "SCHEDULE", 1, 1, False, [])
-        # ! [reqhistoricaldata]
-
-    @printWhenExecuting
-    def historicalDataOperations_cancel(self):
-        # ! [cancelHeadTimestamp]
-        self.cancelHeadTimeStamp(4101)
-        # ! [cancelHeadTimestamp]
-        
-        # Canceling historical data requests
-        # ! [cancelhistoricaldata]
-        self.cancelHistoricalData(4102)
-        self.cancelHistoricalData(4103)
-        self.cancelHistoricalData(4104)
-        # ! [cancelhistoricaldata]
-
-    @printWhenExecuting
-    def historicalTicksOperations(self):
-        # ! [reqhistoricalticks]
-        self.reqHistoricalTicks(18001, ContractSamples.USStockAtSmart(),
-                                "20170712 21:39:33 US/Eastern", "", 10, "TRADES", 1, True, [])
-        self.reqHistoricalTicks(18002, ContractSamples.USStockAtSmart(),
-                                "20170712 21:39:33 US/Eastern", "", 10, "BID_ASK", 1, True, [])
-        self.reqHistoricalTicks(18003, ContractSamples.USStockAtSmart(),
-                                "20170712 21:39:33 US/Eastern", "", 10, "MIDPOINT", 1, True, [])
-        # ! [reqhistoricalticks]
 
     @iswrapper
     # ! [headTimestamp]
@@ -1787,35 +1419,6 @@ class TradeApp(TestWrapper, TestClient):
         for tick in ticks:
             print("HistoricalTickLast. ReqId:", reqId, tick)
     # ! [historicaltickslast]
-
-    @printWhenExecuting
-    def optionsOperations_req(self):
-        # ! [reqsecdefoptparams]
-        self.reqSecDefOptParams(0, "IBM", "", "STK", 8314)
-        # ! [reqsecdefoptparams]
-
-        # Calculating implied volatility
-        # ! [calculateimpliedvolatility]
-        self.calculateImpliedVolatility(5001, ContractSamples.OptionWithLocalSymbol(), 0.5, 55, [])
-        # ! [calculateimpliedvolatility]
-
-        # Calculating option's price
-        # ! [calculateoptionprice]
-        self.calculateOptionPrice(5002, ContractSamples.OptionWithLocalSymbol(), 0.6, 55, [])
-        # ! [calculateoptionprice]
-
-        # Exercising options
-        # ! [exercise_options]
-        self.exerciseOptions(5003, ContractSamples.OptionWithTradingClass(), 1,
-                             1, self.account, 1)
-        # ! [exercise_options]
-
-    @printWhenExecuting
-    def optionsOperations_cancel(self):
-        # Canceling implied volatility
-        self.cancelCalculateImpliedVolatility(5001)
-        # Canceling option's price calculation
-        self.cancelCalculateOptionPrice(5002)
 
     @iswrapper
     # ! [securityDefinitionOptionParameter]
@@ -1919,85 +1522,6 @@ class TradeApp(TestWrapper, TestClient):
 
     # ! [tickoptioncomputation]
 
-
-    @printWhenExecuting
-    def contractOperations(self):
-        # ! [reqcontractdetails]
-        self.reqContractDetails(214, self.get_daily_trade_contract())
-        # ! [reqcontractdetails]
-
-    @printWhenExecuting
-    def newsOperations_req(self):
-        # Requesting news ticks
-        # ! [reqNewsTicks]
-        self.reqMktData(10001, ContractSamples.USStockAtSmart(), "mdoff,292", False, False, []);
-        # ! [reqNewsTicks]
-
-        # Returns list of subscribed news providers
-        # ! [reqNewsProviders]
-        self.reqNewsProviders()
-        # ! [reqNewsProviders]
-
-        # Returns body of news article given article ID
-        # ! [reqNewsArticle]
-        self.reqNewsArticle(10002,"BRFG", "BRFG$04fb9da2", [])
-        # ! [reqNewsArticle]
-
-        # Returns list of historical news headlines with IDs
-        # ! [reqHistoricalNews]
-        self.reqHistoricalNews(10003, 8314, "BRFG", "", "", 10, [])
-        # ! [reqHistoricalNews]
-
-        # ! [reqcontractdetailsnews]
-        self.reqContractDetails(10004, ContractSamples.NewsFeedForQuery())
-        # ! [reqcontractdetailsnews]
-
-    @printWhenExecuting
-    def newsOperations_cancel(self):
-        # Canceling news ticks
-        # ! [cancelNewsTicks]
-        self.cancelMktData(10001);
-        # ! [cancelNewsTicks]
-
-    @iswrapper
-    #! [tickNews]
-    def tickNews(self, tickerId: int, timeStamp: int, providerCode: str,
-                 articleId: str, headline: str, extraData: str):
-        print("TickNews. TickerId:", tickerId, "TimeStamp:", intMaxString(timeStamp),
-              "ProviderCode:", providerCode, "ArticleId:", articleId,
-              "Headline:", headline, "ExtraData:", extraData)
-    #! [tickNews]
-
-    @iswrapper
-    #! [historicalNews]
-    def historicalNews(self, reqId: int, time: str, providerCode: str,
-                       articleId: str, headline: str):
-        print("HistoricalNews. ReqId:", reqId, "Time:", time,
-              "ProviderCode:", providerCode, "ArticleId:", articleId,
-              "Headline:", headline)
-    #! [historicalNews]
-
-    @iswrapper
-    #! [historicalNewsEnd]
-    def historicalNewsEnd(self, reqId:int, hasMore:bool):
-        print("HistoricalNewsEnd. ReqId:", reqId, "HasMore:", hasMore)
-    #! [historicalNewsEnd]
-
-    @iswrapper
-    #! [newsProviders]
-    def newsProviders(self, newsProviders: ListOfNewsProviders):
-        print("NewsProviders: ")
-        for provider in newsProviders:
-            print("NewsProvider.", provider)
-    #! [newsProviders]
-
-    @iswrapper
-    #! [newsArticle]
-    def newsArticle(self, reqId: int, articleType: int, articleText: str):
-        print("NewsArticle. ReqId:", reqId, "ArticleType:", articleType,
-              "ArticleText:", articleText)
-    #! [newsArticle]
-
     @iswrapper
     # ! [contractdetails]
     def contractDetails(self, reqId: int, contractDetails: ContractDetails):
@@ -2011,13 +1535,6 @@ class TradeApp(TestWrapper, TestClient):
     # ! [contractdetails]
 
     @iswrapper
-    # ! [bondcontractdetails]
-    def bondContractDetails(self, reqId: int, contractDetails: ContractDetails):
-        super().bondContractDetails(reqId, contractDetails)
-        printinstance(contractDetails)
-    # ! [bondcontractdetails]
-
-    @iswrapper
     # ! [contractdetailsend]
     def contractDetailsEnd(self, reqId: int):
         super().contractDetailsEnd(reqId)
@@ -2026,94 +1543,6 @@ class TradeApp(TestWrapper, TestClient):
         if reqId in self.request_events:
             self.request_events[reqId].set()
     # ! [contractdetailsend]
-
-    @iswrapper
-    # ! [symbolSamples]
-    def symbolSamples(self, reqId: int,
-                      contractDescriptions: ListOfContractDescription):
-        super().symbolSamples(reqId, contractDescriptions)
-        print("Symbol Samples. Request Id: ", reqId)
-
-        for contractDescription in contractDescriptions:
-            derivSecTypes = ""
-            for derivSecType in contractDescription.derivativeSecTypes:
-                derivSecTypes += " "
-                derivSecTypes += derivSecType
-            print("Contract: conId:%s, symbol:%s, secType:%s primExchange:%s, "
-                  "currency:%s, derivativeSecTypes:%s, description:%s, issuerId:%s" % (
-                contractDescription.contract.conId,
-                contractDescription.contract.symbol,
-                contractDescription.contract.secType,
-                contractDescription.contract.primaryExchange,
-                contractDescription.contract.currency, derivSecTypes,
-                contractDescription.contract.description,
-                contractDescription.contract.issuerId))
-    # ! [symbolSamples]
-
-    @printWhenExecuting
-    def marketScannersOperations_req(self):
-        # Requesting list of valid scanner parameters which can be used in TWS
-        # ! [reqscannerparameters]
-        self.reqScannerParameters()
-        # ! [reqscannerparameters]
-
-        # Triggering a scanner subscription
-        # ! [reqscannersubscription]
-        self.reqScannerSubscription(7001, ScannerSubscriptionSamples.HighOptVolumePCRatioUSIndexes(), [], [])
-
-        # Generic Filters
-        tagvalues = []
-        tagvalues.append(TagValue("usdMarketCapAbove", "10000"))
-        tagvalues.append(TagValue("optVolumeAbove", "1000"))
-        tagvalues.append(TagValue("avgVolumeAbove", "10000"));
-
-        self.reqScannerSubscription(7002, ScannerSubscriptionSamples.HotUSStkByVolume(), [], tagvalues) # requires TWS v973+
-        # ! [reqscannersubscription]
-
-        # ! [reqcomplexscanner]
-        AAPLConIDTag = [TagValue("underConID", "265598")]
-        self.reqScannerSubscription(7003, ScannerSubscriptionSamples.ComplexOrdersAndTrades(), [], AAPLConIDTag) # requires TWS v975+
-        
-        # ! [reqcomplexscanner]
-
-
-    @printWhenExecuting
-    def marketScanners_cancel(self):
-        # Canceling the scanner subscription
-        # ! [cancelscannersubscription]
-        self.cancelScannerSubscription(7001)
-        self.cancelScannerSubscription(7002)
-        self.cancelScannerSubscription(7003)
-        # ! [cancelscannersubscription]
-
-    @iswrapper
-    # ! [scannerparameters]
-    def scannerParameters(self, xml: str):
-        super().scannerParameters(xml)
-        open('log/scanner.xml', 'w').write(xml)
-        print("ScannerParameters received.")
-    # ! [scannerparameters]
-
-    @iswrapper
-    # ! [scannerdata]
-    def scannerData(self, reqId: int, rank: int, contractDetails: ContractDetails,
-                    distance: str, benchmark: str, projection: str, legsStr: str):
-        super().scannerData(reqId, rank, contractDetails, distance, benchmark,
-                            projection, legsStr)
-#        print("ScannerData. ReqId:", reqId, "Rank:", rank, "Symbol:", contractDetails.contract.symbol,
-#              "SecType:", contractDetails.contract.secType,
-#              "Currency:", contractDetails.contract.currency,
-#              "Distance:", distance, "Benchmark:", benchmark,
-#              "Projection:", projection, "Legs String:", legsStr)
-        print("ScannerData. ReqId:", reqId, ScanData(contractDetails.contract, rank, distance, benchmark, projection, legsStr))
-    # ! [scannerdata]
-
-    @iswrapper
-    # ! [scannerdataend]
-    def scannerDataEnd(self, reqId: int):
-        super().scannerDataEnd(reqId)
-        print("ScannerDataEnd. ReqId:", reqId)
-        # ! [scannerdataend]
 
     @iswrapper
     # ! [smartcomponents]
@@ -2143,346 +1572,11 @@ class TradeApp(TestWrapper, TestClient):
     # ! [mktDepthExchanges]
 
     @printWhenExecuting
-    def fundamentalsOperations_req(self):
-        # Requesting Fundamentals
-        # ! [reqfundamentaldata]
-        self.reqFundamentalData(8001, ContractSamples.USStock(), "ReportsFinSummary", [])
-        # ! [reqfundamentaldata]
-        
-        # ! [fundamentalexamples]
-        self.reqFundamentalData(8002, ContractSamples.USStock(), "ReportSnapshot", []); # for company overview
-        self.reqFundamentalData(8003, ContractSamples.USStock(), "ReportRatios", []); # for financial ratios
-        self.reqFundamentalData(8004, ContractSamples.USStock(), "ReportsFinStatements", []); # for financial statements
-        self.reqFundamentalData(8005, ContractSamples.USStock(), "RESC", []); # for analyst estimates
-        self.reqFundamentalData(8006, ContractSamples.USStock(), "CalendarReport", []); # for company calendar
-        # ! [fundamentalexamples]
-
-    @printWhenExecuting
-    def fundamentalsOperations_cancel(self):
-        # Canceling fundamentalsOperations_req request
-        # ! [cancelfundamentaldata]
-        self.cancelFundamentalData(8001)
-        # ! [cancelfundamentaldata]
-
-        # ! [cancelfundamentalexamples]
-        self.cancelFundamentalData(8002)
-        self.cancelFundamentalData(8003)
-        self.cancelFundamentalData(8004)
-        self.cancelFundamentalData(8005)
-        self.cancelFundamentalData(8006)
-        # ! [cancelfundamentalexamples]
-
-    @iswrapper
-    # ! [fundamentaldata]
-    def fundamentalData(self, reqId: TickerId, data: str):
-        super().fundamentalData(reqId, data)
-        print("FundamentalData. ReqId:", reqId, "Data:", data)
-    # ! [fundamentaldata]
-
-    @printWhenExecuting
-    def bulletinsOperations_req(self):
-        # Requesting Interactive Broker's news bulletinsOperations_req
-        # ! [reqnewsbulletins]
-        self.reqNewsBulletins(True)
-        # ! [reqnewsbulletins]
-
-    @printWhenExecuting
-    def bulletinsOperations_cancel(self):
-        # Canceling IB's news bulletinsOperations_req
-        # ! [cancelnewsbulletins]
-        self.cancelNewsBulletins()
-        # ! [cancelnewsbulletins]
-
-    @iswrapper
-    # ! [updatenewsbulletin]
-    def updateNewsBulletin(self, msgId: int, msgType: int, newsMessage: str,
-                           originExch: str):
-        super().updateNewsBulletin(msgId, msgType, newsMessage, originExch)
-        print("News Bulletins. MsgId:", msgId, "Type:", msgType, "Message:", newsMessage,
-              "Exchange of Origin: ", originExch)
-        # ! [updatenewsbulletin]
-
-    def ocaSample(self):
-        # OCA ORDER
-        # ! [ocasubmit]
-        ocaOrders = [OrderSamples.LimitOrder("BUY", 1, 10), OrderSamples.LimitOrder("BUY", 1, 11),
-                     OrderSamples.LimitOrder("BUY", 1, 12)]
-        OrderSamples.OneCancelsAll("TestOCA_" + str(self.nextValidOrderId), ocaOrders, 2)
-        for o in ocaOrders:
-            self.placeOrder(self.nextOrderId(), ContractSamples.USStockAtSmart(), o)
-            # ! [ocasubmit]
-
-    def conditionSamples(self):
-        # ! [order_conditioning_activate]
-        mkt = OrderSamples.MarketOrder("BUY", 100)
-        # Order will become active if conditioning criteria is met
-        mkt.conditions.append(
-            OrderSamples.PriceCondition(PriceCondition.TriggerMethodEnum.Default,
-                                        208813720, "SMART", 600, False, False))
-        mkt.conditions.append(OrderSamples.ExecutionCondition("EUR.USD", "CASH", "IDEALPRO", True))
-        mkt.conditions.append(OrderSamples.MarginCondition(30, True, False))
-        mkt.conditions.append(OrderSamples.PercentageChangeCondition(15.0, 208813720, "SMART", True, True))
-        mkt.conditions.append(OrderSamples.TimeCondition("20160118 23:59:59 US/Eastern", True, False))
-        mkt.conditions.append(OrderSamples.VolumeCondition(208813720, "SMART", False, 100, True))
-        self.placeOrder(self.nextOrderId(), ContractSamples.EuropeanStock(), mkt)
-        # ! [order_conditioning_activate]
-
-        # Conditions can make the order active or cancel it. Only LMT orders can be conditionally canceled.
-        # ! [order_conditioning_cancel]
-        lmt = OrderSamples.LimitOrder("BUY", 100, 20)
-        # The active order will be cancelled if conditioning criteria is met
-        lmt.conditionsCancelOrder = True
-        lmt.conditions.append(
-            OrderSamples.PriceCondition(PriceCondition.TriggerMethodEnum.Last,
-                                        208813720, "SMART", 600, False, False))
-        self.placeOrder(self.nextOrderId(), ContractSamples.EuropeanStock(), lmt)
-        # ! [order_conditioning_cancel]
-
-    def bracketSample(self):
-        # BRACKET ORDER
-        # ! [bracketsubmit]
-        bracket = OrderSamples.BracketOrder(self.nextOrderId(), "BUY", 100, 30, 40, 20)
-        for o in bracket:
-            self.placeOrder(o.orderId, ContractSamples.EuropeanStock(), o)
-            self.nextOrderId()  # need to advance this we'll skip one extra oid, it's fine
-            # ! [bracketsubmit]
-
-    def hedgeSample(self):
-        # F Hedge order
-        # ! [hedgesubmit]
-        # Parent order on a contract which currency differs from your base currency
-        parent = OrderSamples.LimitOrder("BUY", 100, 10)
-        parent.orderId = self.nextOrderId()
-        parent.transmit = False
-        # Hedge on the currency conversion
-        hedge = OrderSamples.MarketFHedge(parent.orderId, "BUY")
-        # Place the parent first...
-        self.placeOrder(parent.orderId, ContractSamples.EuropeanStock(), parent)
-        # Then the hedge order
-        self.placeOrder(self.nextOrderId(), ContractSamples.EurGbpFx(), hedge)
-        # ! [hedgesubmit]
-
-    def algoSamples(self):
-        # ! [scale_order]
-        scaleOrder = OrderSamples.RelativePeggedToPrimary("BUY",  70000,  189,  0.01);
-        AvailableAlgoParams.FillScaleParams(scaleOrder, 2000, 500, True, .02, 189.00, 3600, 2.00, True, 10, 40);
-        self.placeOrder(self.nextOrderId(), ContractSamples.USStockAtSmart(), scaleOrder);
-        # ! [scale_order]
-
-        time.sleep(1)
-
-        # ! [algo_base_order]
-        baseOrder = OrderSamples.LimitOrder("BUY", 1000, 1)
-        # ! [algo_base_order]
-
-        # ! [arrivalpx]
-        AvailableAlgoParams.FillArrivalPriceParams(baseOrder, 0.1, "Aggressive", "09:00:00 US/Eastern", "16:00:00 US/Eastern", True, True)
-        self.placeOrder(self.nextOrderId(), ContractSamples.USStockAtSmart(), baseOrder)
-        # ! [arrivalpx]
-
-        # ! [darkice]
-        AvailableAlgoParams.FillDarkIceParams(baseOrder, 10, "09:00:00 US/Eastern", "16:00:00 US/Eastern", True)
-        self.placeOrder(self.nextOrderId(), ContractSamples.USStockAtSmart(), baseOrder)
-        # ! [darkice]
-
-        # ! [place_midprice]
-        self.placeOrder(self.nextOrderId(), ContractSamples.USStockAtSmart(), OrderSamples.Midprice("BUY", 1, 150))
-        # ! [place_midprice]
-
-        # ! [ad]
-        # The Time Zone in "startTime" and "endTime" attributes is ignored and always defaulted to GMT
-        AvailableAlgoParams.FillAccumulateDistributeParams(baseOrder, 10, 60, True, True, 1, True, True, "12:00:00", "16:00:00")
-        self.placeOrder(self.nextOrderId(), ContractSamples.USStockAtSmart(), baseOrder)
-        # ! [ad]
-
-        # ! [twap]
-        AvailableAlgoParams.FillTwapParams(baseOrder, "Marketable", "09:00:00 US/Eastern", "16:00:00 US/Eastern", True)
-        self.placeOrder(self.nextOrderId(), ContractSamples.USStockAtSmart(), baseOrder)
-        # ! [twap]
-
-        # ! [vwap]
-        AvailableAlgoParams.FillVwapParams(baseOrder, 0.2, "09:00:00 US/Eastern", "16:00:00 US/Eastern", True, True)
-        self.placeOrder(self.nextOrderId(), ContractSamples.USStockAtSmart(), baseOrder)
-        # ! [vwap]
-
-        # ! [balanceimpactrisk]
-        AvailableAlgoParams.FillBalanceImpactRiskParams(baseOrder, 0.1, "Aggressive", True)
-        self.placeOrder(self.nextOrderId(), ContractSamples.USOptionContract(), baseOrder)
-        # ! [balanceimpactrisk]
-
-        # ! [minimpact]
-        AvailableAlgoParams.FillMinImpactParams(baseOrder, 0.3)
-        self.placeOrder(self.nextOrderId(), ContractSamples.USOptionContract(), baseOrder)
-        # ! [minimpact]
-
-        # ! [adaptive]
-        AvailableAlgoParams.FillAdaptiveParams(baseOrder, "Normal")
-        self.placeOrder(self.nextOrderId(), ContractSamples.USStockAtSmart(), baseOrder)
-        # ! [adaptive]
-
-        # ! [closepx]
-        AvailableAlgoParams.FillClosePriceParams(baseOrder, 0.4, "Neutral", "20180926-06:06:49", True)
-        self.placeOrder(self.nextOrderId(), ContractSamples.USStockAtSmart(), baseOrder)
-        # ! [closepx]
-
-        # ! [pctvol]
-        AvailableAlgoParams.FillPctVolParams(baseOrder, 0.5, "12:00:00 US/Eastern", "14:00:00 US/Eastern", True)
-        self.placeOrder(self.nextOrderId(), ContractSamples.USStockAtSmart(), baseOrder)
-        # ! [pctvol]
-
-        # ! [pctvolpx]
-        AvailableAlgoParams.FillPriceVariantPctVolParams(baseOrder, 0.1, 0.05, 0.01, 0.2, "12:00:00 US/Eastern", "14:00:00 US/Eastern", True)
-        self.placeOrder(self.nextOrderId(), ContractSamples.USStockAtSmart(), baseOrder)
-        # ! [pctvolpx]
-
-        # ! [pctvolsz]
-        AvailableAlgoParams.FillSizeVariantPctVolParams(baseOrder, 0.2, 0.4, "12:00:00 US/Eastern", "14:00:00 US/Eastern", True)
-        self.placeOrder(self.nextOrderId(), ContractSamples.USStockAtSmart(), baseOrder)
-        # ! [pctvolsz]
-
-        # ! [pctvoltm]
-        AvailableAlgoParams.FillTimeVariantPctVolParams(baseOrder, 0.2, 0.4, "12:00:00 US/Eastern", "14:00:00 US/Eastern", True)
-        self.placeOrder(self.nextOrderId(), ContractSamples.USStockAtSmart(), baseOrder)
-        # ! [pctvoltm]
-
-        # ! [jeff_vwap_algo]
-        AvailableAlgoParams.FillJefferiesVWAPParams(baseOrder, "10:00:00 US/Eastern", "16:00:00 US/Eastern", 10, 10, "Exclude_Both", 130, 135, 1, 10, "Patience", False, "Midpoint")
-        self.placeOrder(self.nextOrderId(), ContractSamples.JefferiesContract(), baseOrder)
-        # ! [jeff_vwap_algo]
-
-        # ! [csfb_inline_algo]
-        AvailableAlgoParams.FillCSFBInlineParams(baseOrder, "10:00:00 US/Eastern", "16:00:00 US/Eastern", "Patient", 10, 20, 100, "Default", False, 40, 100, 100, 35)
-        self.placeOrder(self.nextOrderId(), ContractSamples.CSFBContract(), baseOrder)
-        # ! [csfb_inline_algo]
-
-        # ! [qbalgo_strobe_algo]
-        AvailableAlgoParams.FillQBAlgoInLineParams(baseOrder, "10:00:00 US/Eastern", "16:00:00 US/Eastern", -99, "TWAP", 0.25, True)
-        self.placeOrder(self.nextOrderId(), ContractSamples.QBAlgoContract(), baseOrder)
-        # ! [qbalgo_strobe_algo]
-
-    @printWhenExecuting
-    def financialAdvisorOperations(self):
-        # Requesting FA information
-        # ! [requestfaaliases]
-        self.requestFA(FaDataTypeEnum.ALIASES)
-        # ! [requestfaaliases]
-
-        # ! [requestfagroups]
-        self.requestFA(FaDataTypeEnum.GROUPS)
-        # ! [requestfagroups]
-
-        # ! [requestfaprofiles]
-        self.requestFA(FaDataTypeEnum.PROFILES)
-        # ! [requestfaprofiles]
-
-        # Replacing FA information - Fill in with the appropriate XML string.
-        # ! [replacefaonegroup]
-        self.replaceFA(1000, FaDataTypeEnum.GROUPS, FaAllocationSamples.FaOneGroup)
-        # ! [replacefaonegroup]
-
-        # ! [replacefatwogroups]
-        self.replaceFA(1001, FaDataTypeEnum.GROUPS, FaAllocationSamples.FaTwoGroups)
-        # ! [replacefatwogroups]
-
-        # ! [replacefaoneprofile]
-        self.replaceFA(1002, FaDataTypeEnum.PROFILES, FaAllocationSamples.FaOneProfile)
-        # ! [replacefaoneprofile]
-
-        # ! [replacefatwoprofiles]
-        self.replaceFA(1003, FaDataTypeEnum.PROFILES, FaAllocationSamples.FaTwoProfiles)
-        # ! [replacefatwoprofiles]
-
-        # ! [reqSoftDollarTiers]
-        self.reqSoftDollarTiers(14001)
-        # ! [reqSoftDollarTiers]
-
-    def wshCalendarOperations(self):
-        # ! [reqmetadata]
-        self.reqWshMetaData(1100)
-        # ! [reqmetadata]
-
-        # ! [reqeventdata]
-        wshEventData1 = WshEventData()
-        wshEventData1.conId = 8314
-        wshEventData1.startDate = "20220511"
-        wshEventData1.totalLimit = 5
-        self.reqWshEventData(1101, wshEventData1)
-        # ! [reqeventdata]
-
-        # ! [reqeventdata]
-        wshEventData2 = WshEventData()
-        wshEventData2.filter = "{\"watchlist\":[\"8314\"]}"
-        wshEventData2.fillWatchlist = False
-        wshEventData2.fillPortfolio = False
-        wshEventData2.fillCompetitors = False
-        wshEventData2.endDate = "20220512"
-        self.reqWshEventData(1102, wshEventData2)
-        # ! [reqeventdata]
-
-    @iswrapper
-    # ! [receivefa]
-    def receiveFA(self, faData: FaDataType, cxml: str):
-        super().receiveFA(faData, cxml)
-        print("Receiving FA: ", faData)
-        open('log/fa.xml', 'w').write(cxml)
-    # ! [receivefa]
-
-    @iswrapper
-    # ! [softDollarTiers]
-    def softDollarTiers(self, reqId: int, tiers: list):
-        super().softDollarTiers(reqId, tiers)
-        print("SoftDollarTiers. ReqId:", reqId)
-        for tier in tiers:
-            print("SoftDollarTier.", tier)
-    # ! [softDollarTiers]
-
-    @printWhenExecuting
     def miscelaneousOperations(self):
         # Request TWS' current time
         self.reqCurrentTime()
         # Setting TWS logging level
         self.setServerLogLevel(1)
-
-    @printWhenExecuting
-    def linkingOperations(self):
-        # ! [querydisplaygroups]
-        self.queryDisplayGroups(19001)
-        # ! [querydisplaygroups]
-
-        # ! [subscribetogroupevents]
-        self.subscribeToGroupEvents(19002, 1)
-        # ! [subscribetogroupevents]
-
-        # ! [updatedisplaygroup]
-        self.updateDisplayGroup(19002, "8314@SMART")
-        # ! [updatedisplaygroup]
-
-        # ! [subscribefromgroupevents]
-        self.unsubscribeFromGroupEvents(19002)
-        # ! [subscribefromgroupevents]
-
-    @iswrapper
-    # ! [displaygrouplist]
-    def displayGroupList(self, reqId: int, groups: str):
-        super().displayGroupList(reqId, groups)
-        print("DisplayGroupList. ReqId:", reqId, "Groups", groups)
-    # ! [displaygrouplist]
-
-    @iswrapper
-    # ! [displaygroupupdated]
-    def displayGroupUpdated(self, reqId: int, contractInfo: str):
-        super().displayGroupUpdated(reqId, contractInfo)
-        print("DisplayGroupUpdated. ReqId:", reqId, "ContractInfo:", contractInfo)
-    # ! [displaygroupupdated]
-
-    @printWhenExecuting
-    def whatIfOrderOperations(self):
-    # ! [whatiflimitorder]
-        whatIfOrder = OrderSamples.LimitOrder("SELL", 5, 70)
-        whatIfOrder.whatIf = True
-        self.placeOrder(self.nextOrderId(), ContractSamples.USStockAtSmart(), whatIfOrder)
-    # ! [whatiflimitorder]
-        time.sleep(2)
 
     def get_daily_trade_contract(self):
         """
@@ -2502,70 +1596,6 @@ class TradeApp(TestWrapper, TestClient):
 
         self.contract = contract
         return contract
-
-    @printWhenExecuting
-    def orderOperations_req(self):
-        # Requesting the next valid id
-        # ! [reqids]
-        # The parameter is always ignored.
-        self.reqIds(-1)
-        # ! [reqids]
-
-        # Placing/modifying an order - remember to ALWAYS increment the
-        # nextValidId after placing an order so it can be used for the next one!
-        # Note if there are multiple clients connected to an account, the
-        # order ID must also be greater than all order IDs returned for orders
-        # to orderStatus and openOrder to this client.
-
-        self.placeOrder(self.nextOrderId(), self.get_daily_trade_contract(),
-                          OrderSamples.MarketOrder("BUY", 1))
-
-    
-
-    def orderOperations_cancel(self):
-        if self.simplePlaceOid is not None:
-            # ! [cancelorder]
-            self.cancelOrder(self.simplePlaceOid, "")
-            # ! [cancelorder]
-            
-        # Cancel all orders for all accounts
-        # ! [reqglobalcancel]
-        self.reqGlobalCancel()
-        # ! [reqglobalcancel]
-         
-        # Cancel limit order with manual order cancel time
-        if self.simplePlaceOid is not None:
-            # ! [cancel_order_with_manual_order_time]
-            self.cancelOrder(self.simplePlaceOid, "20220303-13:00:00")
-            # ! [cancel_order_with_manual_order_time]
-
-    def rerouteCFDOperations(self):
-        # ! [reqmktdatacfd]
-        self.reqMktData(16001, ContractSamples.USStockCFD(), "", False, False, [])
-        self.reqMktData(16002, ContractSamples.EuropeanStockCFD(), "", False, False, []);
-        self.reqMktData(16003, ContractSamples.CashCFD(), "", False, False, []);
-        # ! [reqmktdatacfd]
-
-        # ! [reqmktdepthcfd]
-        self.reqMktDepth(16004, ContractSamples.USStockCFD(), 10, False, []);
-        self.reqMktDepth(16005, ContractSamples.EuropeanStockCFD(), 10, False, []);
-        self.reqMktDepth(16006, ContractSamples.CashCFD(), 10, False, []);
-        # ! [reqmktdepthcfd]
-
-    def marketRuleOperations(self):
-        self.reqContractDetails(17001, ContractSamples.USStock())
-        self.reqContractDetails(17002, ContractSamples.Bond())
-
-        # ! [reqmarketrule]
-        self.reqMarketRule(26)
-        self.reqMarketRule(239)
-        # ! [reqmarketrule]
-        
-    def ibkratsSample(self):
-        # ! [ibkratssubmit]
-        ibkratsOrder = OrderSamples.LimitIBKRATS("BUY", 100, 330)
-        self.placeOrder(self.nextOrderId(), ContractSamples.IBKRATSContract(), ibkratsOrder)
-        # ! [ibkratssubmit]
 
     @iswrapper
     # ! [execdetails]
@@ -2617,37 +1647,6 @@ class TradeApp(TestWrapper, TestClient):
         super().completedOrdersEnd()
         print("CompletedOrdersEnd")
     # ! [completedordersend]
-
-    @iswrapper
-    # ! [replacefaend]
-    def replaceFAEnd(self, reqId: int, text: str):
-        super().replaceFAEnd(reqId, text)
-        print("ReplaceFAEnd.", "ReqId:", reqId, "Text:", text)
-    # ! [replacefaend]
-
-    @iswrapper
-    # ! [wshmetadata]
-    def wshMetaData(self, reqId: int, dataJson: str):
-        super().wshMetaData(reqId, dataJson)
-        print("WshMetaData.", "ReqId:", reqId, "Data JSON:", dataJson)
-    # ! [wshmetadata]
-
-    @iswrapper
-    # ! [wsheventdata]
-    def wshEventData(self, reqId: int, dataJson: str):
-        super().wshEventData(reqId, dataJson)
-        print("WshEventData.", "ReqId:", reqId, "Data JSON:", dataJson)
-    # ! [wsheventdata]
-
-    @iswrapper
-    # ! [historicalschedule]
-    def historicalSchedule(self, reqId: int, startDateTime: str, endDateTime: str, timeZone: str, sessions: ListOfHistoricalSessions):
-        super().historicalSchedule(reqId, startDateTime, endDateTime, timeZone, sessions)
-        print("HistoricalSchedule. ReqId:", reqId, "Start:", startDateTime, "End:", endDateTime, "TimeZone:", timeZone)
-
-        for session in sessions:
-            print("\tSession. Start:", session.startDateTime, "End:", session.endDateTime, "Ref Date:", session.refDate)
-    # ! [historicalschedule]
 
     @iswrapper
     # ! [userinfo]
