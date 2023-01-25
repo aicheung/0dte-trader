@@ -30,4 +30,5 @@ IBKR Gateway or TWS is assumed to be running in local machine or the same Kubern
 - `-ai` (`AUTO_RETRY_INTERVAL`): Due to the large bid-ask spread, option spread orders may have difficulty filling at mid prices. If set and is larger than zero, order will be resubmitted by the interval specified. In each interal, order price will be decremented by the amount specified by param `-ap`. If not set or set at 0, orders will wait indefinitely until completely filled.
 - `-ap` (`AUTO_RETRY_PRICE_DECREMENT`): Decrements price towards 0 by the value specified each time the order is resubmitted. In other words, setting this to a negative value will increase the order price away from zero (useful for debit spreads).
 - `-pt` (`PROFIT_TAKING_PERCENTAGE`): Percentage of premium for the profit taking order. e.g. 0.5 to take profit at 50% of credit received. If unset or set to 0, will not send profit taking orders to IBKR.
+- `-ds` (`EXPIRY_DATE_SEARCH_RANGE`): If set and larger than 0, search for options with expiry dates plus or minus of this value if the DTE specified in the -e parameter is not found e.g. -e 30 and -ds 5, will search for options with DTE between 25-35.
 

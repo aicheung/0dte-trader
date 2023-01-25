@@ -198,6 +198,7 @@ class TradeApp(TestWrapper, TestClient):
         self.auto_retry_fill_interval = 0
         self.auto_retry_price_decrement = 0.05
         self.profit_taking_percentage = 0.0
+        self.expiry_date_search_range = 0
 
         self.round_interval = 0.05
 
@@ -585,20 +586,70 @@ class TradeApp(TestWrapper, TestClient):
                     "contract": e.contract
                 }
 
+    def get_option_chain_for_expiry(self, exp_str: str, symbol: str, sec_type: str, con_id):
+        """
+        Call IBKR's reqSecDefOptParams and search for option chains for specified DTE for the ticker.
+        
+        Args:
+            exp_str (str): the expiry date string matching the IBKR format (e.g. 20230101)
+            symbol (str): the ticker
+            sec_type (str): 'STK' for stocks, 'FUT' for futures etc.
+            con_id (int): IBKR contract ID for the ticker
+
+        Returns:
+            An IBKR event containing the option chain and target expiry date in the object.
+        """
+        event = IBKREvent(self.nextOrderId())
+        event.target_expiration = exp_str
+        self.register_event(event)
+        self.reqSecDefOptParams(event.order_id, symbol, "", sec_type, con_id)
+        event.wait()
+        logging.info(f"Option chain: {event.option_strikes}")
+        logging.info(f"Option expirations: {event.option_expirations}")
+        return event
+
+    def search_option_chain_for_expiry_range(self, expiry_date_search_range, target_exp, symbol, sec_type, con_id):
+        """
+        Search for option chains in the specified range of DTEs.
+
+        Args:
+            expiry_date_search_range (int): the date range to search for option chains.
+            target_exp (date): the original target DTE. Most likely not found by the time of calling this function.
+            symbol (str): the ticker for the option chain.
+            sec_type (str): the IBKR security type for the ticker.
+            con_id (int): the IBKR contract ID for the ticker.
+
+        Returns:
+            A (IBKREvent object, expiry date) tuple with the option chain data if option chain is found (nearest to the original DTE if possible), otherwise None.
+        """
+        chains = [] #will order them later
+        #up first
+        for i in range(-expiry_date_search_range, expiry_date_search_range + 1, 1):
+            exp = target_exp + datetime.timedelta(days = i)
+            target_exp_str = exp.strftime("%Y%m%d")
+            event = self.get_option_chain_for_expiry(target_exp_str, symbol, sec_type, con_id)
+            has_exp = event.option_expirations != None and target_exp_str in event.option_expirations
+            if has_exp:
+                chains.append((event, abs(i), target_exp_str))
+
+        chains.sort(key=lambda c: c[1])
+        if len(chains) < 1:
+            return None
+        else:
+            return chains[0][0], chains[0][2]
+
     def get_target_option_chain(self, dte: int = 0, get_prices: bool = False):
         """
         Get the option chain for the specified DTE for the target contract.
         """
         target_exp = datetime.date.today() + datetime.timedelta(days = dte)
         target_exp_str = target_exp.strftime("%Y%m%d")
-        event = IBKREvent(self.nextOrderId())
-        event.target_expiration = target_exp_str
-        self.register_event(event)
-        self.reqSecDefOptParams(event.order_id, self.contract.symbol, "", self.contract.secType, self.contract.conId)
-        event.wait()
-        logging.info(f"Option chain: {event.option_strikes}")
-        logging.info(f"Option expirations: {event.option_expirations}")
+        
+        event = self.get_option_chain_for_expiry(target_exp_str, self.contract.symbol, self.contract.secType, self.contract.conId)
 
+        if self.expiry_date_search_range > 0 and event.option_expirations == None:
+            #fuzzy search for DTE
+            event, target_exp_str = self.search_option_chain_for_expiry_range(self.expiry_date_search_range, target_exp, self.contract.symbol, self.contract.secType, self.contract.conId)
         has_exp = target_exp_str in event.option_expirations
         if not has_exp:
             logging.warning(f"Expiration date {target_exp_str} not found for ticker: {self.contract.symbol}. Will not trade!")
@@ -1688,7 +1739,8 @@ def run(
     dte: int = 0,
     auto_retry_fill_interval: int = 0,
     auto_retry_price_decrement: float = 0.05,
-    profit_taking_percentage: float = 0.0
+    profit_taking_percentage: float = 0.0,
+    expiry_date_search_range: int = 0
     ):
     stocks = []
     futures = []
@@ -1715,7 +1767,8 @@ def run(
         dte,
         auto_retry_fill_interval,
         auto_retry_price_decrement,
-        profit_taking_percentage
+        profit_taking_percentage,
+        expiry_date_search_range
         )
 
 def run_trading_program(
@@ -1731,7 +1784,8 @@ def run_trading_program(
     dte: int = 0,
     auto_retry_fill_interval: int = 0,
     auto_retry_price_decrement: float = 0.05,
-    profit_taking_percentage: float = 0.0
+    profit_taking_percentage: float = 0.0,
+    expiry_date_search_range: int = 0
     ):
     logging.debug("now is %s", datetime.datetime.now())
 
@@ -1766,6 +1820,7 @@ def run_trading_program(
         app.auto_retry_fill_interval = auto_retry_fill_interval
         app.auto_retry_price_decrement = auto_retry_price_decrement
         app.profit_taking_percentage = profit_taking_percentage
+        app.expiry_date_search_range = expiry_date_search_range
 
         #ip = get_wsl_host_ip()
         ip = "localhost"
@@ -1802,6 +1857,7 @@ def main():
     cmdLineParser.add_argument("-ai", "--auto_retry_fill_interval", type=int, default=os.environ.get("AUTO_RETRY_INTERVAL", 10), dest="auto_retry_fill_interval", help="If set and is larger than zero, order will be resubmitted by the interval specified. In each interal, order price will be decremented by the amount specified by param -ap.")
     cmdLineParser.add_argument("-ap", "--auto_retry_price_decrement", type=float, default=os.environ.get("AUTO_RETRY_PRICE_DECREMENT", 0.5), dest="auto_retry_price_decrement", help="Decrements price towards 0 by the value specified each time the order is resubmitted.")
     cmdLineParser.add_argument("-pt", "--profit_taking_percentage", type=float, default=os.environ.get("PROFIT_TAKING_PERCENTAGE", 0.0), dest="profit_taking_percentage", help="Percentage of premium for the profit taking order. e.g. 0.5 to take profit at 50% of credit received. If unset or set to 0, will not send profit taking orders to IBKR.")
+    cmdLineParser.add_argument("-ds", "--expiry_date_search_range", type=int, default=os.environ.get("EXPIRY_DATE_SEARCH_RANGE", 0), dest="expiry_date_search_range", help="If set and larger than 0, search for options with expiry dates plus or minus of this value if the DTE specified in the -e parameter is not found e.g. -e 30 and -ds 5, will search for options with DTE between 25-35.")
     group = cmdLineParser.add_mutually_exclusive_group()
     group.add_argument("-t", "--ticker", type=str, dest="ticker", required=False, default=os.environ.get("TICKER", ""), help="Ticker to trade. Can be US stocks or indexes with options only. Cannot be used with -f flag at the same time.")
     group.add_argument("-f", "--future", type=str, dest="future", required=False, default=os.environ.get("FUTURE", ""), help="[NOT IMPLEMENTED YET] Futures contract to trade. Cannot be used with -t flag at the same time.")
@@ -1823,7 +1879,8 @@ def main():
     args.dte,
     args.auto_retry_fill_interval,
     args.auto_retry_price_decrement,
-    args.profit_taking_percentage)
+    args.profit_taking_percentage,
+    args.expiry_date_search_range)
 
 def setup_logging():
     import os
