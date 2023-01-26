@@ -191,6 +191,7 @@ class TradeApp(TestWrapper, TestClient):
         self.contract = None #target contract to trade
         self.options_trading_mode = 1
         self.option_chain = {} #the current option chain
+        self.far_option_chain = {} # the far-dated option chain for Calendar / Diagonal Spreads etc.
         self.short_leg_delta = 0.0
         self.long_leg_delta = 0.0
         self.stop_loss_percentage = 0.0
@@ -199,6 +200,7 @@ class TradeApp(TestWrapper, TestClient):
         self.auto_retry_price_decrement = 0.05
         self.profit_taking_percentage = 0.0
         self.expiry_date_search_range = 0
+        self.far_dte = 1
 
         self.round_interval = 0.05
 
@@ -531,7 +533,7 @@ class TradeApp(TestWrapper, TestClient):
         e.wait()
         return e.last, e.option_bid, e.option_ask
 
-    def get_option_data(self, exp, strikes, side, trading_class, itm_options: bool = False, get_prices: bool = False):
+    def get_option_data(self, exp, strikes, side, trading_class, itm_options: bool = False, get_prices: bool = False, is_far: bool = False):
         #for optimization, no need to get far strike options? (e.g. 7% range for SPX)
         target_range_percentage = 0.07
 
@@ -576,10 +578,12 @@ class TradeApp(TestWrapper, TestClient):
         for e in opts:
             e.wait()
 
+        dest: dict = self.option_chain if not is_far else self.far_option_chain
+
         for e in opts:
             if e.option_delta != None:
                 logging.info(f"Strike {e.contract.strike}{e.contract.right} done! {e.option_bid} {e.option_ask} {e.option_delta}")
-                self.option_chain[str(e.contract.strike) + e.contract.right] = {
+                dest[str(e.contract.strike) + e.contract.right] = {
                     "bid": e.option_bid,
                     "ask": e.option_ask,
                     "delta": e.option_delta,
@@ -638,9 +642,14 @@ class TradeApp(TestWrapper, TestClient):
         else:
             return chains[0][0], chains[0][2]
 
-    def get_target_option_chain(self, dte: int = 0, get_prices: bool = False):
+    def get_target_option_chain(self, dte: int = 0, get_prices: bool = False, is_far: bool = False):
         """
         Get the option chain for the specified DTE for the target contract.
+
+        Args:
+            dte (int): the day of expiry for the option chain.
+            get_prices (bool): reserved.
+            is_far (bool, optional): True if loading the far dated option for Calendar / Diagonal Spreads, False otherwise.
         """
         target_exp = datetime.date.today() + datetime.timedelta(days = dte)
         target_exp_str = target_exp.strftime("%Y%m%d")
@@ -650,7 +659,7 @@ class TradeApp(TestWrapper, TestClient):
         if self.expiry_date_search_range > 0 and event.option_expirations == None:
             #fuzzy search for DTE
             event, target_exp_str = self.search_option_chain_for_expiry_range(self.expiry_date_search_range, target_exp, self.contract.symbol, self.contract.secType, self.contract.conId)
-        has_exp = target_exp_str in event.option_expirations
+        has_exp = event.option_expirations != None and target_exp_str in event.option_expirations
         if not has_exp:
             logging.warning(f"Expiration date {target_exp_str} not found for ticker: {self.contract.symbol}. Will not trade!")
             return False
@@ -658,14 +667,14 @@ class TradeApp(TestWrapper, TestClient):
         #load greeks for all calls and puts?
         logging.info(f"Loading Greeks for {self.contract.symbol} options with expiry {target_exp_str}:")
 
-        if self.options_trading_mode in [1,3,5,7]:
-            self.get_option_data(target_exp_str, event.option_strikes, "P", event.option_trading_class, get_prices)
-        if self.options_trading_mode in [2,3,4,6,8]:
-            self.get_option_data(target_exp_str, event.option_strikes, "C", event.option_trading_class, get_prices) #may not be needed for 0dte put spread?
+        if self.options_trading_mode in [1,3,5,7,9]:
+            self.get_option_data(target_exp_str, event.option_strikes, "P", event.option_trading_class, get_prices, is_far=is_far)
+        if self.options_trading_mode in [2,3,4,6,8,10]:
+            self.get_option_data(target_exp_str, event.option_strikes, "C", event.option_trading_class, get_prices, is_far=is_far) #may not be needed for 0dte put spread?
 
         return True
 
-    def find_option_by_delta(self, delta: Decimal | float, side: str, delta_upper_bound: Decimal = None, delta_lower_bound: Decimal = None):
+    def find_option_by_delta(self, delta: Decimal | float, side: str, delta_upper_bound: Decimal = None, delta_lower_bound: Decimal = None, is_far: bool = False):
         """
         Find the option contract with the closest delta as specified.
 
@@ -674,21 +683,24 @@ class TradeApp(TestWrapper, TestClient):
             side (str): "P" for put, "C" for call
             delta_upper_bound (Decimal, optional): the upper bound for delta. Can be used to limit a particular leg so as not to get the same contract as other legs.
             delta_lower_bound (Decimal, optional): the lower bound for delta. Can be used to limit a particular leg so as not to get the same contract as other legs.
-        
+            is_far (bool, optional): Is searching far option chain for the option.
+
         Returns:
             The dict containing the target option contract in the "contract" key.
         """
         assert(side in ["C", "P"])
 
+        chain = self.option_chain if not is_far else self.far_option_chain
+
         delta = round(Decimal(delta),2) if type(delta) == float else delta
         diff = Decimal(9999999.99)
         target = None
-        for s in self.option_chain.keys():
+        for s in chain.keys():
             if str(s).find(side) == -1:
                 #wrong side
                 continue
 
-            option = self.option_chain[s]
+            option = chain[s]
             delta_val = abs(option['delta'])
             if delta_upper_bound != None and delta_val >= abs(delta_upper_bound):
                 continue
@@ -934,13 +946,19 @@ class TradeApp(TestWrapper, TestClient):
 
         for item in self.tickers:
             self.option_chain = {}
+            self.far_option_chain = {}
             self.ticker = item[0]
             self.future = ""
             self.quantity = item[1]
             self.get_target_contract()
             option_chain_found = self.get_target_option_chain(self.dte) #0 for 0dte
+            if self.options_trading_mode in [9,10]:
+                #Calendar/Diagonal spreads
+                far_option_chain_found = self.get_target_option_chain(self.far_dte, is_far = True)
+            else:
+                far_option_chain_found = True
 
-            if not option_chain_found:
+            if not option_chain_found or not far_option_chain_found:
                 continue
 
             #now we have option chain, build option combo and then order by mode
@@ -990,6 +1008,11 @@ class TradeApp(TestWrapper, TestClient):
                     short_put_leg = self.find_option_by_delta(self.short_leg_delta, "P" if self.options_trading_mode in [5,7] else "C")
                     assert(short_put_leg != None)
                     self.execute_single_option_order(short_put_leg, self.stop_loss_percentage, True if self.options_trading_mode in [5,6] else False)
+                case 9 | 10:
+                    #put / call calendar / diagnoal spreads
+                    short_leg = self.find_option_by_delta(self.short_leg_delta, "P" if self.options_trading_mode == 9 else "C")
+                    long_leg = self.find_option_by_delta(self.long_leg_delta, "P" if self.options_trading_mode == 9 else "C", is_far = True)
+                    self.execute_option_spread_order(short_leg, long_leg)
         time.sleep(5) #for IBKR to clear pending messages
         logging.info("All trades complete! Disconnecting now...")
         self.disconnect()
@@ -1740,7 +1763,8 @@ def run(
     auto_retry_fill_interval: int = 0,
     auto_retry_price_decrement: float = 0.05,
     profit_taking_percentage: float = 0.0,
-    expiry_date_search_range: int = 0
+    expiry_date_search_range: int = 0,
+    far_dte: int = 1
     ):
     stocks = []
     futures = []
@@ -1768,7 +1792,8 @@ def run(
         auto_retry_fill_interval,
         auto_retry_price_decrement,
         profit_taking_percentage,
-        expiry_date_search_range
+        expiry_date_search_range,
+        far_dte
         )
 
 def run_trading_program(
@@ -1785,7 +1810,8 @@ def run_trading_program(
     auto_retry_fill_interval: int = 0,
     auto_retry_price_decrement: float = 0.05,
     profit_taking_percentage: float = 0.0,
-    expiry_date_search_range: int = 0
+    expiry_date_search_range: int = 0,
+    far_dte: int = 1
     ):
     logging.debug("now is %s", datetime.datetime.now())
 
@@ -1821,6 +1847,7 @@ def run_trading_program(
         app.auto_retry_price_decrement = auto_retry_price_decrement
         app.profit_taking_percentage = profit_taking_percentage
         app.expiry_date_search_range = expiry_date_search_range
+        app.far_dte = far_dte
 
         #ip = get_wsl_host_ip()
         ip = "localhost"
@@ -1849,11 +1876,12 @@ def main():
     cmdLineParser.add_argument("-q", "--quantity", type=int, dest="quantity", default=os.environ.get("QUANTITY", 1), help="The amount of stock or futures option combos to trade.")
     cmdLineParser.add_argument("-c", "--check_only", type=bool, dest="check_only", default=os.environ.get("CHECK_ONLY", False), help="Check account position only.")
     cmdLineParser.add_argument("-d", "--dry_run", type=bool, dest="dry_run", default=os.environ.get("DRY_RUN", "false").lower() == "true", help="Dry run.")
-    cmdLineParser.add_argument("-m", "--mode", type=int, dest="mode", choices=[1, 2, 3, 4, 5, 6, 7, 8], default=os.environ.get("MODE", 1), help="Mode: 1 for Bull / Bear Put, 2 for Bear / Bull Call, 3 for Iron Condor / Iron Butterfly, 4 for Butterfly, 5 - 8 for Short Put/Short Call/Long Put/Long Call respectively.")
+    cmdLineParser.add_argument("-m", "--mode", type=int, dest="mode", choices=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10], default=os.environ.get("MODE", 1), help="Mode: 1 for Bull / Bear Put, 2 for Bear / Bull Call, 3 for Iron Condor / Iron Butterfly, 4 for Butterfly, 5 - 8 for Short Put/Short Call/Long Put/Long Call respectively. 9 for Put Calendar/Diagonal Spread, 10 for Call Calendar/Diagonal Spread.")
     cmdLineParser.add_argument("-s", "--short_leg_delta", type=float, dest="short_leg_delta", default=os.environ.get("SHORT_LEG_DELTA", 0.16), help="Delta of the short leg. Should be a float in range of [0,1].")
     cmdLineParser.add_argument("-l", "--long_leg_delta", type=float, dest="long_leg_delta", default=os.environ.get("LONG_LEG_DELTA", 0.1), help="Delta of the long leg. Should be a float in range of [0,1].")
     cmdLineParser.add_argument("-x", "--stop_loss_percentage", type=float, dest="stop_loss_percentage", default=os.environ.get("STOP_LOSS_PERCENTAGE", 3.0), help="Percentage of stop loss as the premium received. e.g. 3.0 for setting stop loss at 300 percent of premium received.")
     cmdLineParser.add_argument("-e", "--day_to_expiry", type=int, default=os.environ.get("DAY_TO_EXPIRY", 0), dest="dte", help="Day to expiry for the target option contract(s).")
+    cmdLineParser.add_argument("-fe", "--far_day_to_expiry", type=int, default=os.environ.get("FAR_LEG_DAY_TO_EXPIRY", 1), dest="far_dte", help="For Calendar / Diagonal Spreads, the DTE of the far-dated leg.")
     cmdLineParser.add_argument("-ai", "--auto_retry_fill_interval", type=int, default=os.environ.get("AUTO_RETRY_INTERVAL", 10), dest="auto_retry_fill_interval", help="If set and is larger than zero, order will be resubmitted by the interval specified. In each interal, order price will be decremented by the amount specified by param -ap.")
     cmdLineParser.add_argument("-ap", "--auto_retry_price_decrement", type=float, default=os.environ.get("AUTO_RETRY_PRICE_DECREMENT", 0.5), dest="auto_retry_price_decrement", help="Decrements price towards 0 by the value specified each time the order is resubmitted.")
     cmdLineParser.add_argument("-pt", "--profit_taking_percentage", type=float, default=os.environ.get("PROFIT_TAKING_PERCENTAGE", 0.0), dest="profit_taking_percentage", help="Percentage of premium for the profit taking order. e.g. 0.5 to take profit at 50% of credit received. If unset or set to 0, will not send profit taking orders to IBKR.")
@@ -1880,7 +1908,8 @@ def main():
     args.auto_retry_fill_interval,
     args.auto_retry_price_decrement,
     args.profit_taking_percentage,
-    args.expiry_date_search_range)
+    args.expiry_date_search_range,
+    args.far_dte)
 
 def setup_logging():
     import os
