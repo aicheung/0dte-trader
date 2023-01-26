@@ -521,6 +521,9 @@ class TradeApp(TestWrapper, TestClient):
             if len(contracts) == 0:
                 logging.warning(f"No {contract.secType} contract found for symbol {contract.symbol}!")
                 raise BaseException(f"No stock, future or index contract found for {contract.symbol}!")
+        elif self.options_trading_mode == 11:
+            #covered call but IDX???
+            raise BaseException(f"Index contract is not supported for covered call.")
 
         target_con = contracts[0].contract
         self.contract = target_con
@@ -669,7 +672,7 @@ class TradeApp(TestWrapper, TestClient):
 
         if self.options_trading_mode in [1,3,5,7,9]:
             self.get_option_data(target_exp_str, event.option_strikes, "P", event.option_trading_class, get_prices, is_far=is_far)
-        if self.options_trading_mode in [2,3,4,6,8,10]:
+        if self.options_trading_mode in [2,3,4,6,8,10,11]:
             self.get_option_data(target_exp_str, event.option_strikes, "C", event.option_trading_class, get_prices, is_far=is_far) #may not be needed for 0dte put spread?
 
         return True
@@ -1013,6 +1016,12 @@ class TradeApp(TestWrapper, TestClient):
                     short_leg = self.find_option_by_delta(self.short_leg_delta, "P" if self.options_trading_mode == 9 else "C")
                     long_leg = self.find_option_by_delta(self.long_leg_delta, "P" if self.options_trading_mode == 9 else "C", is_far = True)
                     self.execute_option_spread_order(short_leg, long_leg)
+                case 11:
+                    # 11 for covered call
+                    # long_leg is just a dict with the stock contract
+                    short_leg = self.find_option_by_delta(self.short_leg_delta, "C")
+                    long_leg = {'contract': self.contract}
+                    self.execute_option_spread_order(short_leg, long_leg, ratio=(100,1))
         time.sleep(5) #for IBKR to clear pending messages
         logging.info("All trades complete! Disconnecting now...")
         self.disconnect()
@@ -1876,7 +1885,7 @@ def main():
     cmdLineParser.add_argument("-q", "--quantity", type=int, dest="quantity", default=os.environ.get("QUANTITY", 1), help="The amount of stock or futures option combos to trade.")
     cmdLineParser.add_argument("-c", "--check_only", type=bool, dest="check_only", default=os.environ.get("CHECK_ONLY", False), help="Check account position only.")
     cmdLineParser.add_argument("-d", "--dry_run", type=bool, dest="dry_run", default=os.environ.get("DRY_RUN", "false").lower() == "true", help="Dry run.")
-    cmdLineParser.add_argument("-m", "--mode", type=int, dest="mode", choices=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10], default=os.environ.get("MODE", 1), help="Mode: 1 for Bull / Bear Put, 2 for Bear / Bull Call, 3 for Iron Condor / Iron Butterfly, 4 for Butterfly, 5 - 8 for Short Put/Short Call/Long Put/Long Call respectively. 9 for Put Calendar/Diagonal Spread, 10 for Call Calendar/Diagonal Spread.")
+    cmdLineParser.add_argument("-m", "--mode", type=int, dest="mode", choices=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], default=os.environ.get("MODE", 1), help="Mode: 1 for Bull / Bear Put, 2 for Bear / Bull Call, 3 for Iron Condor / Iron Butterfly, 4 for Butterfly, 5 - 8 for Short Put/Short Call/Long Put/Long Call respectively. 9 for Put Calendar/Diagonal Spread, 10 for Call Calendar/Diagonal Spread. 11 for Covered Call.")
     cmdLineParser.add_argument("-s", "--short_leg_delta", type=float, dest="short_leg_delta", default=os.environ.get("SHORT_LEG_DELTA", 0.16), help="Delta of the short leg. Should be a float in range of [0,1].")
     cmdLineParser.add_argument("-l", "--long_leg_delta", type=float, dest="long_leg_delta", default=os.environ.get("LONG_LEG_DELTA", 0.1), help="Delta of the long leg. Should be a float in range of [0,1].")
     cmdLineParser.add_argument("-x", "--stop_loss_percentage", type=float, dest="stop_loss_percentage", default=os.environ.get("STOP_LOSS_PERCENTAGE", 3.0), help="Percentage of stop loss as the premium received. e.g. 3.0 for setting stop loss at 300 percent of premium received.")

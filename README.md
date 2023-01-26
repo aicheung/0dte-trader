@@ -9,10 +9,11 @@ Supports the follwing option spreads:
 - Iron Condor / Iron Butterfly
 - Long/Short single Put/Call option
 
-Besides 0DTE options, this program can also trade longer dated version of the above spreads (just set `-e` to your desired DTE), as well as the following multi-DTE option spreads:
+Besides 0DTE options, this program can also trade longer dated version of the above spreads (just set `-e` to your desired DTE), as well as the following multi-DTE option spreads or stock-option combinations:
 
 - Put Calendar / Diagonal Spreads
 - Call Calendar / Diagonal Spreads
+- Covered Call
 
 ## Installation
 Python 3.10 is assumed. 
@@ -26,7 +27,7 @@ IBKR Gateway or TWS is assumed to be running in local machine or the same Kubern
 - `-p` (`PORT`): The TCP port to the IBKR Gateway or TWS.
 - `-q` (`QUANTITY`): The amount of stock or futures option combos to trade
 - `-d` (`DRY_RUN`): Dry run. If set (by passing "True"), all logic will execute as normal but will not send any orders to IBKR.
-- `-m` (`MODE`): Mode: 1 for Bull / Bear Put, 2 for Bear / Bull Call, 3 for Iron Condor / Iron Butterfly, 4 for Butterfly, 5 - 8 for Short Put/Short Call/Long Put/Long Call respectively. 9 for Put Calendar/Diagonal Spread, 10 for Call Calendar/Diagonal Spread.
+- `-m` (`MODE`): Mode: 1 for Bull / Bear Put, 2 for Bear / Bull Call, 3 for Iron Condor / Iron Butterfly, 4 for Butterfly, 5 - 8 for Short Put/Short Call/Long Put/Long Call respectively. 9 for Put Calendar/Diagonal Spread, 10 for Call Calendar/Diagonal Spread. 11 for Covered Call.
 - `-s` (`SHORT_LEG_DELTA`): Delta of the short leg. Should be a float in range of [0,1]. For Iron Butterfly, set this to 0.5.
 - `-l` (`LONG_LEG_DELTA`): Delta of the long leg. Should be a float in range of [0,1]. For Butterfly, should be the delta of the ITM option (i.e. larger than 0.5). Delta of the OTM leg will be determined by (1 - value).
 - `-x` (`STOP_LOSS_PERCENTAGE`): Percentage of stop loss as the premium received. e.g. 3.0 for setting stop loss at 300 percent of premium received.
