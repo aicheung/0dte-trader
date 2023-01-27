@@ -41,6 +41,8 @@ from trading.IBKREvent import IBKREvent
 
 from ibapi.scanner import ScanData
 
+from trading.OptionChainViewer import OptionChainViewer
+
 FUTURES_ROLLOVER_THREASHOLD = 14
 
 def printWhenExecuting(fn):
@@ -211,6 +213,8 @@ class TradeApp(TestWrapper, TestClient):
         self.ticker = "" #stock ticker as passed from CMD or function call, to be searched for a valid contract
         self.future = ""
         self.quantity = 0
+
+        self.option_chain_viewer = OptionChainViewer()
 
     def dumpTestCoverageSituation(self):
         for clntMeth in sorted(self.clntMeth2callCount.keys()):
@@ -670,9 +674,9 @@ class TradeApp(TestWrapper, TestClient):
         #load greeks for all calls and puts?
         logging.info(f"Loading Greeks for {self.contract.symbol} options with expiry {target_exp_str}:")
 
-        if self.options_trading_mode in [1,3,5,7,9]:
+        if self.options_trading_mode in [1,3,5,7,9,99]:
             self.get_option_data(target_exp_str, event.option_strikes, "P", event.option_trading_class, get_prices, is_far=is_far)
-        if self.options_trading_mode in [2,3,4,6,8,10,11]:
+        if self.options_trading_mode in [2,3,4,6,8,10,11,99]:
             self.get_option_data(target_exp_str, event.option_strikes, "C", event.option_trading_class, get_prices, is_far=is_far) #may not be needed for 0dte put spread?
 
         return True
@@ -1022,6 +1026,10 @@ class TradeApp(TestWrapper, TestClient):
                     short_leg = self.find_option_by_delta(self.short_leg_delta, "C")
                     long_leg = {'contract': self.contract}
                     self.execute_option_spread_order(short_leg, long_leg, ratio=(100,1))
+                case 99:
+                    #viewer
+                    self.option_chain_viewer.start_window()
+                
         time.sleep(5) #for IBKR to clear pending messages
         logging.info("All trades complete! Disconnecting now...")
         self.disconnect()
@@ -1545,7 +1553,7 @@ class TradeApp(TestWrapper, TestClient):
         rqs = []
         for k in self.request_events.keys():
             r = self.request_events[k]
-            if r.is_set() or r.contract == None:
+            if r.is_set() or r.contract == None or r.contract.secType != "OPT":
                 #unrelated
                 continue
 
@@ -1562,7 +1570,20 @@ class TradeApp(TestWrapper, TestClient):
             if counter % 20 == 0:
                 time.sleep(1)
 
-
+    def update_gui(self):
+        def find_put(strike):
+            for e in self.request_events:
+                if type(self.request_events[e]) != IBKREvent :
+                    continue
+                            
+                ie: IBKREvent = self.request_events[e]
+                if ie.contract != None and ie.contract.strike == strike and ie.contract.right == "P":
+                    return ie
+            return None
+        put4030 = find_put(4030)
+        if put4030 == None:
+            return
+        self.option_chain_viewer.update_text(f"{put4030.option_delta_bid} {put4030.option_delta_ask} {put4030.option_delta_last} {put4030.option_delta_model}")
 
     @iswrapper
     # ! [tickoptioncomputation]
@@ -1576,7 +1597,6 @@ class TradeApp(TestWrapper, TestClient):
         #       "ImpliedVolatility:", impliedVol, "Delta:", delta, "OptionPrice:",
         #       optPrice, "pvDividend:", pvDividend, "Gamma: ", gamma, "Vega:", vega,
         #       "Theta:", theta, "UnderlyingPrice:", undPrice)
-
         e = self.find_event_by_id(reqId)
         if not e == None and delta != None:
             match tickType:
@@ -1592,11 +1612,14 @@ class TradeApp(TestWrapper, TestClient):
                 case 13:
                     e.option_delta_model = round(Decimal(delta),4)
                     e.check_delta()
-
+            
+            self.update_gui()
             if e.has_complete_data() and not e.option_req_cancelled:
                 e.set()
-                self.cancelMktData(e.order_id)
-                e.option_req_cancelled = True
+
+                if self.options_trading_mode not in [99]:
+                    self.cancelMktData(e.order_id)
+                    e.option_req_cancelled = True
 
                 cmp = e.compare_delta(0.01)
                 if cmp != None and cmp > 0:
@@ -1885,7 +1908,7 @@ def main():
     cmdLineParser.add_argument("-q", "--quantity", type=int, dest="quantity", default=os.environ.get("QUANTITY", 1), help="The amount of stock or futures option combos to trade.")
     cmdLineParser.add_argument("-c", "--check_only", type=bool, dest="check_only", default=os.environ.get("CHECK_ONLY", False), help="Check account position only.")
     cmdLineParser.add_argument("-d", "--dry_run", type=bool, dest="dry_run", default=os.environ.get("DRY_RUN", "false").lower() == "true", help="Dry run.")
-    cmdLineParser.add_argument("-m", "--mode", type=int, dest="mode", choices=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], default=os.environ.get("MODE", 1), help="Mode: 1 for Bull / Bear Put, 2 for Bear / Bull Call, 3 for Iron Condor / Iron Butterfly, 4 for Butterfly, 5 - 8 for Short Put/Short Call/Long Put/Long Call respectively. 9 for Put Calendar/Diagonal Spread, 10 for Call Calendar/Diagonal Spread. 11 for Covered Call.")
+    cmdLineParser.add_argument("-m", "--mode", type=int, dest="mode", choices=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 99], default=os.environ.get("MODE", 1), help="Mode: 1 for Bull / Bear Put, 2 for Bear / Bull Call, 3 for Iron Condor / Iron Butterfly, 4 for Butterfly, 5 - 8 for Short Put/Short Call/Long Put/Long Call respectively. 9 for Put Calendar/Diagonal Spread, 10 for Call Calendar/Diagonal Spread. 11 for Covered Call.")
     cmdLineParser.add_argument("-s", "--short_leg_delta", type=float, dest="short_leg_delta", default=os.environ.get("SHORT_LEG_DELTA", 0.16), help="Delta of the short leg. Should be a float in range of [0,1].")
     cmdLineParser.add_argument("-l", "--long_leg_delta", type=float, dest="long_leg_delta", default=os.environ.get("LONG_LEG_DELTA", 0.1), help="Delta of the long leg. Should be a float in range of [0,1].")
     cmdLineParser.add_argument("-x", "--stop_loss_percentage", type=float, dest="stop_loss_percentage", default=os.environ.get("STOP_LOSS_PERCENTAGE", 3.0), help="Percentage of stop loss as the premium received. e.g. 3.0 for setting stop loss at 300 percent of premium received.")
