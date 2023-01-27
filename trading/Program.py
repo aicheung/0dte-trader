@@ -1545,7 +1545,7 @@ class TradeApp(TestWrapper, TestClient):
         rqs = []
         for k in self.request_events.keys():
             r = self.request_events[k]
-            if r.is_set() or r.contract == None:
+            if r.is_set() or r.contract == None or r.contract.secType != "OPT":
                 #unrelated
                 continue
 
